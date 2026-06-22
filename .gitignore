@@ -1,4 +1,6 @@
 build/
+Livox-SDK2/
+ws_livox/
 install/
 log/
 __pycache__/

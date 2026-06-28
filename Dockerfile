@@ -29,6 +29,7 @@ RUN apt-get update && apt-get install -y \
 # Additional Dependencies
 RUN apt-get update && apt-get install -y \
     python3-serial \
+    python3-pip \
     && rm -rf /var/lib/apt/lists/*
 
 # ROS 2 Humble — only needed on Jetson (amd64 base already has it)
@@ -129,6 +130,9 @@ RUN apt-get update && apt install -y \
 	ros-humble-py-trees-ros-viewer && \
     rm -rf /var/lib/apt/lists/*
 
+# Python tools
+RUN pip3 install --no-cache-dir \
+    rosbags
 
 WORKDIR /root
 CMD ["/bin/bash"]

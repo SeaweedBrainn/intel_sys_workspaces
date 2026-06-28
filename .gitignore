@@ -10,4 +10,11 @@ cmake_install.cmake
 .vscode/
 .idea/
 *~
+
+# rosbag formats
+*.db3
+*.bag
+*mcap
+
+# Mac's Cache
 .DS_Store

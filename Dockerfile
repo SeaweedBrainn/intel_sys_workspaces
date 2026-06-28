@@ -111,6 +111,10 @@ RUN cd /root/unilidar_sdk2-2.0.4/unitree_lidar_sdk && \
     cd build && \
     cmake .. && make -j$(nproc)
 
+# git clone livox driver and point lio
+RUN git clone https://github.com/Livox-SDK/livox_ros_driver2.git /root/ws_livox/src/livox_ros_driver2
+RUN cd /root/catkin_point_lio_unilidar/src && \
+    git clone https://github.com/dfloreaa/point_lio_ros2.git
 
 WORKDIR /root
 CMD ["/bin/bash"]

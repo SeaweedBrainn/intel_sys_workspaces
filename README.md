@@ -197,6 +197,7 @@ There are a number of commands associated when working with git with this reposi
 
 ## 6. Working With Docker Containers
 There are a number of commands associated when working with docker cli with this repository.
+- To build a docker container with the DockerFile simply go to the base folder and run `docker compose build`
 - To open a new container associated with the repo simply go to the base folder and run `docker compose up -d`.
 - To exit a container just run `exit` while in the container.
 - To stop a container, first exit the container and then run `docker compose stop` in the base folder of this repo
@@ -222,3 +223,51 @@ There are a number of commands associated when working with ROS2 cli with this r
 - To run a ros2 launch file run `ros2 launch <package-name> <launch-file-name>`.
 - To view all current nodes run `ros2 node list`.
 - To view all current topics run `ros2 topic list`.
+
+## 8. Using ROS2 Bags
+You might have a rosbag or a ros2 bag with you that you can run test data. In this repository one such example can be extracted to `ros2_ws/src/robotics_URC_package/robotics_URC_package/rosbags`. 
+
+### 8.1 Getting The ROS1 Bag File for This Project
+The rosbag file is too big to be commited to github. Get the file for this repository from here: https://drive.google.com/file/d/1w7TD9ZcxOy_qwZ4VXqc-komV-KagjOmv. It was found in this repository: https://github.com/unitreerobotics/point_lio_unilidar.
+
+After downloading the file from the google drive link. Run the following (on your host NOT the container):
+```bash
+sudo apt install unzip
+unzip ~/Downloads/unilidar_l2.zip -d ~/intel_sys_workspaces/ros2_ws/src/robotics_URC_package/robotics_URC_package/rosbags/
+# Replace the download path if your file was downloaded somewhere else
+```
+
+### 8.2 Converting ROS1 bag files to ROS2
+The `.bag` files are the files supported by ROS1 but we are using ROS2 so we need to convert it to its respective ROS2 sqlite database. We are using the rosbags python library for that.
+
+Simply run (inside the container):
+```bash
+sourceros2
+rosbags-convert --src <source-bag-file> --dst <name-of-bag-file-with-a-`_0`-appended-at-end>
+rm -rf <destination-from-above>/metadata.yaml
+ros2 bag reindex <desination-from-above> -s sqlite3
+# Here change sqlite3 to mcap if your data base file inside the destination is .mcap instead of .db3
+```
+Make sure your destination ends with `_0` (or especially the .db3 file inside), otherwise the reindexing in the last line will fail.
+
+For example, here the rosbag file is `unilidar_l2.bag`. Make sure you completed Section 8.1 before this. So we would run:
+```bash
+sourceros2
+rosbags-convert --src /root/ros2_ws/src/robotics_URC_package/robotics_URC_package/rosbags/unilidar_l2.bag --dst /root/ros2_ws/src/robotics_URC_package/robotics_URC_package/rosbags/unilidar_l2_0
+rm -rf /root/ros2_ws/src/robotics_URC_package/robotics_URC_package/rosbags/unilidar_l2_0/metadata.yaml
+ros2 bag reindex /root/ros2_ws/src/robotics_URC_package/robotics_URC_package/rosbags/unilidar_l2_0 -s sqlite3
+```
+This made the ros2 bag folder  `unilidar_l2_0` and then reindexed it for us to run later.
+
+### 8.3 Running ROS2 bag files
+Simply run the generated ROS2 bag folder via
+```bash
+sourceros2
+ros2 bag play <ros2-bag-folder>
+```
+For example, here the ros2 bag folder is `unilidar_l2_0`. Make sure the folder (or especially the .db3 file inside the folder) ends with a `_0`. This ros2 bag plays the data provided by unitree unilidar l2. Make sure you completed Section 8.2 before doing this. You can run it by:
+```bash
+sourceros2
+ros2 bag play /root/ros2_ws/src/robotics_URC_package/robotics_URC_package/rosbags/unilidar_l2_0
+```
+If you get an error try reindexing the bag folder via Section 8.1. After running this you can open another terminal session and run SLAM (Look at Section 4.2).

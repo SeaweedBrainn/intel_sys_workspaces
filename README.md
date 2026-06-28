@@ -105,7 +105,7 @@ sourceros2
 ```
 
 ### 3.4 catkin_point_lio_unilidar
-This repository only appears after you have completed Section 2. It contains the source code for point lio (Our SLAM framework). You can find the documentation here: https://github.com/dfloreaa/point_lio_ros2. Make sure Section 3.3 is completed before this. To build this code run the following:
+This repository contains the source code for point lio (Our SLAM framework). You can find the documentation here: https://github.com/dfloreaa/point_lio_ros2. Make sure Section 3.3 is completed before this. To build this code run the following:
 ```bash
 sourcelivox
 cd /root/catkin_point_lio_unilidar

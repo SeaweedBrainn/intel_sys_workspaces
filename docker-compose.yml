@@ -22,7 +22,6 @@ services:
       - ./ros2_ws:/root/ros2_ws
       - ./unilidar_sdk2-2.0.4/unitree_lidar_ros2:/root/unilidar_sdk2-2.0.4/unitree_lidar_ros2
       - ./catkin_point_lio_unilidar:/root/catkin_point_lio_unilidar
-      - ./ws_livox:/root/ws_livox
     stdin_open: true
     tty: true
     runtime: ${DOCKER_RUNTIME:-runc}

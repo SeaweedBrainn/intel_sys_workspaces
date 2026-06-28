@@ -13,7 +13,6 @@ echo "Ensuring workspace directories exist..."
 mkdir -p ros2_ws/src
 mkdir -p unilidar_sdk2-2.0.4/unitree_lidar_ros2/src
 mkdir -p catkin_point_lio_unilidar/src
-mkdir -p ws_livox/src
 
 xhost +local:docker
 

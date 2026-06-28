@@ -17,11 +17,15 @@ services:
       - TERM=xterm-256color
       - COLORTERM=truecolor
       - FORCE_COLOR=1
+      - XDG_RUNTIME_DIR=/tmp/runtime-root
+      - LIBGL_ALWAYS_SOFTWARE=1
     volumes:
       - /tmp/.X11-unix:/tmp/.X11-unix
       - ./ros2_ws:/root/ros2_ws
       - ./unilidar_sdk2-2.0.4/unitree_lidar_ros2:/root/unilidar_sdk2-2.0.4/unitree_lidar_ros2
       - ./catkin_point_lio_unilidar:/root/catkin_point_lio_unilidar
+    devices:
+      - /dev/dri:/dev/dri
     stdin_open: true
     tty: true
     runtime: ${DOCKER_RUNTIME:-runc}

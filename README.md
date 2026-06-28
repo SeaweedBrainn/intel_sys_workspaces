@@ -61,8 +61,9 @@ Currently, you can only use docker commands with sudo. To be able to use docker 
 - Clone the repository into your root folder
     ```bash
     cd ~
-    git clone https://github.com/SeaweedBrainn/intel_sys_workspaces.git
+    git clone --recurse-submodules https://github.com/SeaweedBrainn/intel_sys_workspaces.git
     cd intel_sys_workspaces
+    git submodule update --recursive
     ```
 - Set the build setup files as executables
     ```bash
@@ -107,7 +108,117 @@ sourceros2
 ### 3.4 catkin_point_lio_unilidar
 This repository contains the source code for point lio (Our SLAM framework). You can find the documentation here: https://github.com/dfloreaa/point_lio_ros2. Make sure Section 3.3 is completed before this. To build this code run the following:
 ```bash
+sourceros2
 sourcelivox
 cd /root/catkin_point_lio_unilidar
 colcon build
 ```
+## 4. Using Different Components
+Make sure you are inside the docker container. There are a number of bash functions and aliases which you can find in this repo and in the docker container. To view all the bash functions run:
+```bash
+gedit /root/ros_aliases.sh
+```
+### 4.1 Launching Lidar
+In the terminal run:
+```bash
+launchlidar
+```
+- In the left panel of the rviz window that opened up, change fixed frame to world for a upright view.
+- Make sure the lidar is connected via ethernet, and the IPv4 configuration is as follows:
+    - Address: 192.168.1.2
+    - Netmask: 255.255.255.0
+
+### 4.2 Launching Slam
+In the terminal run:
+```bash
+launchslam
+```
+Make sure you completed Section 4.1 prior to doing this section
+
+### 4.2 Launching RealSense Viewer
+In the terminal run:
+```bash
+realsense-viewer
+```
+Make sure the realsense camera is connected
+
+### 4.3 Making the TestBench Teleoperate
+Make sure you pressed on the button on the test bench to turn on the stm motor driver, as well as make sure you have connected the USB-A from the testbench to your device prior to doing these steps.
+#### 4.3.1 Making the TestBench communicate
+Open a terminal session and run:
+```bash
+sourceros2
+cd /root/ros2_ws && source install/setup.sh
+ros2 launch ros_robot_controller ros_robot_controller.launch.py
+```
+You may get a udev-rules error here. To fix the error: // FIX_ME: Add Documentation
+
+#### 4.3.2 Starting the Odometery Publisher Node
+Open another terminal session and run:
+```bash
+sourceros2
+cd /root/ros2_ws && source install/setup.sh
+ros2 run controller odom_publisher
+```
+
+#### 4.3.3 Starting the Teleoperation Node
+Open another terminal session and run:
+```bash
+sourceros2
+cd /root/ros2_ws && source install/setup.sh
+ros2 run robotics_URC_package testbench_teleop
+```
+
+### 4.4 Using py-trees-ros
+We are using py-trees-ros for our behavior trees. You can find the documentation here: https://github.com/splintered-reality/py_trees_ros.
+
+- To run the behavior trees open a terminal session and run:
+    ```bash
+    sourceros2
+    cd /root/ros2_ws && source install/setup.sh
+    ros2 run robotics_URC_package robot
+    ```
+- To visualize the tree while its running, open another terminal session and run:
+    ```bash
+    sourceros2
+    py-trees-tree-viewer
+    ```
+
+## 5. Working With git
+There are a number of commands associated when working with git with this repository.
+- While in the base folder running `git add .` will add all the changes to the next commit. Here `.` is means the current working repository, you could change it to specific changes too.
+- Running `git commit -m "Your Message"` will commit your changes to remote.
+- Running `git push` will push your changes online to github.
+- Running `git pull` will all changes from remote onto your local system
+- Running `git switch -c <branch-name>` will create a new branch and switch to it.
+- Running `git branch <branch-name>` will pull an existing branch from remote and switch to it.
+- Running `git branch` will show all the branches locally on your computer.
+- Running `git switch <branch-name>` will switch to one of those branches locally on your computer.
+
+## 6. Working With Docker Containers
+There are a number of commands associated when working with docker cli with this repository.
+- To open a new container associated with the repo simply go to the base folder and run `docker compose up -d`.
+- To exit a container just run `exit` while in the container.
+- To stop a container, first exit the container and then run `docker compose stop` in the base folder of this repo
+- To start a stopped container, go to the base folder of this repo and run `docker compose start`
+- To delete a container, first exit the container and then run `docker compose down`. Be careful if you delete a container, all data not in the three folders aka catkin_point_lio_unilidar, ros2_ws, and unilidar_sdk2-2.0.4 will be lost.
+- To enter the terminal shell of an already running docker container go to the base folder and run `docker compose exec <container-name> bash`
+- To view all current running containers run `docker container list`
+- To view all current running and pas stopped containers run `docker container list -a`
+- To delete a docker container run `docker rm <container-name>`
+- To delete all docker containers run `docker container prune`
+- To view all docker images run `docker images list`
+- To delete a docker image run `docker rmi <image-name>`
+- To delete all build cache for a fresh build from the dockerfile run `docker builder prune`
+
+## 7. Working With ROS2
+There are a number of commands associated when working with ROS2 cli with this repository.
+- You need to source ROS2 before you can use any ros2 commands, you can do it via `source /opt/ros/humble/setup.bash` or via `sourceros2`
+- After you make changes to a ROS2 package you need to build it again and then source the installation of that package.
+    - To build a ros2 package, go into the workspace with that package, this folder should have just src and maybe build, log, and install folders. Run `colcon build`. If you want to build only specific packages in that workspace run `colcon build --packages-select <package-name>`.
+    - To source the installation of that package, again go into the workspace and run `source install/setup.sh`. This sourcing is different from sourcing ros2, as this places the workspace packages for us to use. You need to do this to work with any package in the workspace. 
+- To view all ros2 packages run `ros2 pkg list`.
+- To run a ros2 node run `ros2 run <package-name> <node-name>`.
+- To run a ros2 launch file run `ros2 launch <package-name> <launch-file-name>`.
+- To view all current nodes run `ros2 node list`.
+- To view all current topics run `ros2 topic list`.

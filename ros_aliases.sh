@@ -1,6 +1,9 @@
 alias sourceros2='source /opt/ros/humble/setup.bash'
 alias sourcelivox='source /root/ws_livox/install/setup.bash'
 
+# For py-trees-tree-viewer to work
+alias py-trees-tree-viewer='py-trees-tree-viewer --no-sandbox'
+
 launchlidar() {
     source /opt/ros/humble/setup.bash
     cd /root/unilidar_sdk2-2.0.4/unitree_lidar_ros2 || return

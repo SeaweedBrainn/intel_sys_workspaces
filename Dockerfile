@@ -26,6 +26,11 @@ RUN apt-get update && apt-get install -y \
     software-properties-common \
     && rm -rf /var/lib/apt/lists/*
 
+# Additional Dependencies
+RUN apt-get update && apt-get install -y \
+    python3-serial \
+    && rm -rf /var/lib/apt/lists/*
+
 # ROS 2 Humble — only needed on Jetson (amd64 base already has it)
 RUN if [ "$(uname -m)" = "aarch64" ]; then \
     add-apt-repository universe && \
@@ -114,6 +119,16 @@ RUN cd /root/unilidar_sdk2-2.0.4/unitree_lidar_sdk && \
 # git clone livox driver and point lio
 RUN cd /root/ws_livox/src && \
     git clone https://github.com/Livox-SDK/livox_ros_driver2.git
+
+# py-trees-ros installation
+RUN apt-get update && apt install -y \
+	ros-humble-py-trees \
+	ros-humble-py-trees-ros-interfaces \
+	ros-humble-py-trees-ros \
+	ros-humble-py-trees-ros-tutorials \
+	ros-humble-py-trees-ros-viewer && \
+    rm -rf /var/lib/apt/lists/*
+
 
 WORKDIR /root
 CMD ["/bin/bash"]

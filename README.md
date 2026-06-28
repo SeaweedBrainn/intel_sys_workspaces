@@ -79,10 +79,11 @@ Currently, you can only use docker commands with sudo. To be able to use docker 
         ```
 
 ## 3. Setting Up Workspaces Inside Docker Container
+Make sure you are inside the docker container
 ### 3.1 ros2_ws
 This workspace contains our custom code within the robotics_URC_package as well as the source code from the test bench. To build this code run the following:
 ```bash
-cd ros2_ws
+cd /root/ros2_ws
 sourceros2
 colcon build
 ```
@@ -90,7 +91,7 @@ colcon build
 ### 3.2 unilidar_sdk2-2.0.4
 This is the ros2 source code and the sdk for the unitiree unilidar L2. To build this code run the following:
 ```bash
-cd unilidar_sdk2-2.0.4/unitree_lidar_ros2
+cd /root/unilidar_sdk2-2.0.4/unitree_lidar_ros2
 sourceros2
 colcon build
 ```
@@ -98,7 +99,7 @@ colcon build
 ### 3.3 ws_livox
 This repository only appears after you have completed Section 2. It contains the source code for the Livox Driver for the Lidar which is needed by point lio (Our SLAM framework) to run. You can find the documentation here: https://github.com/Livox-SDK/livox_ros_driver2. To build this code run the following:
 ```bash
-cd ws_livox/src/livox_ros_driver2
+cd /root/ws_livox/src/livox_ros_driver2
 sourceros2
 ./build.sh humble
 ```
@@ -107,6 +108,6 @@ sourceros2
 This repository only appears after you have completed Section 2. It contains the source code for point lio (Our SLAM framework). You can find the documentation here: https://github.com/dfloreaa/point_lio_ros2. Make sure Section 3.3 is completed before this. To build this code run the following:
 ```bash
 sourcelivox
-cd catkin_point_lio_unilidar
+cd /root/catkin_point_lio_unilidar
 colcon build
 ```

@@ -26,6 +26,7 @@ services:
       - ./catkin_point_lio_unilidar:/root/catkin_point_lio_unilidar
     devices:
       - /dev/dri:/dev/dri
+      - /dev/rrc:/dev/rrc
     stdin_open: true
     tty: true
     runtime: ${DOCKER_RUNTIME:-runc}

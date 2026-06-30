@@ -143,15 +143,30 @@ realsense-viewer
 Make sure the realsense camera is connected
 
 ### 4.3 Making the TestBench Teleoperate
-Make sure you pressed on the button on the test bench to turn on the stm motor driver, as well as make sure you have connected the USB-A from the testbench to your device prior to doing these steps.
-#### 4.3.1 Making the TestBench communicate
+Make sure you pressed on the button on the test bench to turn on the stm motor driver, as well as make sure you have connected the USB-A from the testbench to your device prior to doing these steps. The testbench here is the HiWonder JetAuto.
+#### 4.3.1 Running the ROS2 Communication Node
 Open a terminal session and run:
 ```bash
 sourceros2
 cd /root/ros2_ws && source install/setup.sh
 ros2 launch ros_robot_controller ros_robot_controller.launch.py
 ```
-You may get a udev-rules error here. To fix the error: // FIX_ME: Add Documentation
+You may get a udev-rules error here. The problem is that the USB device probably shows itself as /dev/ttyACM0 by default, however, the HiWonder library marks the device to /dev/rrc in the python code. To fix the error.
+Open a terminal on your host (not the container) and run:
+```bash
+lsusb
+```
+In the output, locate the USB Device (In this case the Testbench HiWonder). For instance here it was:
+```bash
+Bus 001 Device 012: ID 1a86:55d4 QinHeng Electronics USB Single Serial
+```
+After that run:
+```bash
+# Replace 1a86 and 55d4 with your correct info from the above field
+echo 'SUBSYSTEM=="tty", ATTRS{idVendor}=="1a86", ATTRS{idProduct}=="55d4", SYMLINK+="rrc", MODE="0666"' | sudo tee /etc/udev/rules.d/99-jetauto-rrc.rules
+sudo udevadm control --reload-rules && sudo udevadm trigger
+```
+
 
 #### 4.3.2 Starting the Odometery Publisher Node
 Open another terminal session and run:

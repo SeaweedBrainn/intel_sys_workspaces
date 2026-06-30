@@ -79,9 +79,10 @@ fi
 # RealSense — Jetson
 RUN if [ "$(uname -m)" = "aarch64" ]; then \
     mkdir -p /etc/apt/keyrings && \
-    apt-key adv --keyserver hkp://keyserver.ubuntu.com:80 \
-        --recv-key F6E65AC044F831AC80A06380C8B3A55A6F3EFCDE && \
-    echo "deb https://librealsense.intel.com/Debian/apt-repo \
+    curl -sSf https://librealsense.realsenseai.com/Debian/librealsenseai.asc | \
+        gpg --dearmor | tee /etc/apt/keyrings/librealsenseai.gpg > /dev/null && \
+    echo "deb [signed-by=/etc/apt/keyrings/librealsenseai.gpg] \
+        https://librealsense.realsenseai.com/Debian/apt-repo \
         $(lsb_release -cs) main" | \
         tee /etc/apt/sources.list.d/librealsense.list && \
     apt-get update && apt-get install -y \

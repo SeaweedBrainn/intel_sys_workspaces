@@ -118,10 +118,6 @@ RUN cd /root/unilidar_sdk2-2.0.4/unitree_lidar_sdk && \
     cd build && \
     cmake .. && make -j$(nproc)
 
-# git clone livox driver and point lio
-RUN cd /root/ws_livox/src && \
-    git clone https://github.com/Livox-SDK/livox_ros_driver2.git
-
 # py-trees-ros installation
 RUN apt-get update && apt install -y \
 	ros-humble-py-trees \

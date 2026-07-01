@@ -1,0 +1,33 @@
+services:
+  autonomy-jetson:
+    build:
+      context: .
+      args:
+        TARGETARCH: ${TARGETARCH:-amd64}
+    image: autonomy-jetson:${TARGETARCH:-amd64}
+    container_name: autonomy-jetson
+    network_mode: host
+    environment:
+      - DISPLAY=${DISPLAY}
+      - QT_X11_NO_MITSHM=1
+      - ROS_DOMAIN_ID=0
+      - MACHINE_TYPE=JetAuto
+      - LIDAR_TYPE=A1
+      - DEPTH_CAMERA_TYPE=None
+      - TERM=xterm-256color
+      - COLORTERM=truecolor
+      - FORCE_COLOR=1
+      - XDG_RUNTIME_DIR=/tmp/runtime-root
+      - LIBGL_ALWAYS_SOFTWARE=1
+    volumes:
+      - /tmp/.X11-unix:/tmp/.X11-unix
+      - ./ros2_ws:/root/ros2_ws
+      - ./unilidar_sdk2-2.0.4/unitree_lidar_ros2:/root/unilidar_sdk2-2.0.4/unitree_lidar_ros2
+      - ./catkin_point_lio_unilidar:/root/catkin_point_lio_unilidar
+      - ./ws_livox:/root/ws_livox
+    devices:
+      - /dev/dri:/dev/dri
+      - /dev/rrc:/dev/rrc
+    stdin_open: true
+    tty: true
+    runtime: ${DOCKER_RUNTIME:-runc}

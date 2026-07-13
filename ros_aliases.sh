@@ -19,6 +19,24 @@ launchslam() {
     ros2 launch point_lio mapping_unilidar_l2.launch.py
 }
 
+launchros2communicationwithtestbench(){
+    sourceros2
+    cd /root/ros2_ws && source install/setup.sh
+    ros2 launch ros_robot_controller ros_robot_controller.launch.py
+}
+
+launchtestbenchodomnode(){
+    sourceros2
+    cd /root/ros2_ws && source install/setup.sh
+    ros2 run controller odom_publisher
+}
+
+launchtestbenchteleop(){
+    sourceros2
+    cd /root/ros2_ws && source install/setup.sh
+    ros2 run robotics_URC_package testbench_teleop
+}
+
 buildworkspace() {
     cd "$1" || return
     colcon build
@@ -29,6 +47,15 @@ buildworkspacepackage() {
     colcon build --packages-select "$2"
 }
 
+# recreate /dev/rrc symlink using udev info from host for testbench
+if [ ! -e /dev/rrc ]; then
+    TARGET=$(udevadm info --query=name --name=/dev/rrc 2>/dev/null || \
+             ls /dev/ttyACM* 2>/dev/null | head -1)
+    if [ -n "$TARGET" ]; then
+        ln -sf "$TARGET" /dev/rrc
+        echo "Created /dev/rrc -> $TARGET"
+    fi
+fi
 
 # JetAuto robot configuration
 export MACHINE_TYPE=JetAuto

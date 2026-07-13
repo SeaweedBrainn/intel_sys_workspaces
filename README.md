@@ -57,6 +57,17 @@ Currently, you can only use docker commands with sudo. To be able to use docker 
     ```
 - Restart your computer or if you are using a virtual machine then restart the virtual machine
 
+### 1.3 Allowing docker containers to draw on the desktop using X11
+By default X11 only allows main users to draw on the window. To allow docker to draw rviz and other GUI windows, run this command on your host system just once for setup. It runs the permission command in every new terminal session you open.
+```bash
+echo "xhost +local:docker > /dev/null 2>&1" >> ~/.bashrc
+```
+Alternatively, you could run the following command every time you reboot your jetson
+```bash
+xhost +local:docker
+```
+
+
 ## 2. Building Docker Image and Running Docker Container for the First Time
 - Clone the repository into your root folder
     ```bash
@@ -127,6 +138,7 @@ launchlidar
 - Make sure the lidar is connected via ethernet, and the IPv4 configuration is as follows:
     - Address: 192.168.1.2
     - Netmask: 255.255.255.0
+- If you get a permission error make sure you completed Section 1.3 prior to running this section.
 
 ### 4.2 Launching Slam
 In the terminal run:
@@ -150,6 +162,10 @@ Open a terminal session and run:
 sourceros2
 cd /root/ros2_ws && source install/setup.sh
 ros2 launch ros_robot_controller ros_robot_controller.launch.py
+```
+Alternatively you can also run:
+```bash
+launchros2communicationwithtestbench
 ```
 You may get a udev-rules error here. The problem is that the USB device probably shows itself as /dev/ttyACM0 by default, however, the HiWonder library marks the device to /dev/rrc in the python code. To fix the error.
 Open a terminal on your host (not the container) and run:
@@ -175,6 +191,10 @@ sourceros2
 cd /root/ros2_ws && source install/setup.sh
 ros2 run controller odom_publisher
 ```
+Alternatively you can also run:
+```bash
+launchtestbenchodomnode
+```
 
 #### 4.3.3 Starting the Teleoperation Node
 Open another terminal session and run:
@@ -182,6 +202,10 @@ Open another terminal session and run:
 sourceros2
 cd /root/ros2_ws && source install/setup.sh
 ros2 run robotics_URC_package testbench_teleop
+```
+Alternatively you can also run:
+```bash
+launchtestbenchteleop
 ```
 
 ### 4.4 Using py-trees-ros

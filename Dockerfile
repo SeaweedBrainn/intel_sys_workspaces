@@ -20,7 +20,7 @@ RUN mkdir -p /opt/intel_sys/deps/src \
  && rosdep update \
  && rosdep install --from-paths /opt/intel_sys/deps/src/point_lio_ros2 \
       /opt/intel_sys/deps/src/unilidar_sdk2/unitree_lidar_ros2/src/unitree_lidar_ros2 \
-      /opt/intel_sys/deps/src/realsense-ros --ignore-src --rosdistro ${ROS_DISTRO} -y \
+      /opt/intel_sys/deps/src/realsense-ros --ignore-src --rosdistro ${ROS_DISTRO} --skip-keys pcl -y \
  && . /opt/ros/${ROS_DISTRO}/setup.sh \
  && colcon build --merge-install --base-paths /opt/intel_sys/deps/src/point_lio_ros2 \
       /opt/intel_sys/deps/src/unilidar_sdk2/unitree_lidar_ros2/src/unitree_lidar_ros2 \

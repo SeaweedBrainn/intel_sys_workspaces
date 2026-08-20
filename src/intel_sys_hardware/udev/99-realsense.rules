@@ -1,0 +1,3 @@
+# Intel RealSense Camera
+SUBSYSTEM=="usb", ATTR{idVendor}=="8086", ATTR{idProduct}=="0b07", MODE:="0666", GROUP:="plugdev"
+SUBSYSTEM=="usb", ATTR{idVendor}=="8086", ATTR{idProduct}=="0b3a", MODE:="0666", GROUP:="plugdev"

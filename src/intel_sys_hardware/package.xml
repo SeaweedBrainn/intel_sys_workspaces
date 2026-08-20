@@ -1,0 +1,27 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>intel_sys_hardware</name>
+  <version>1.0.0</version>
+  <description>Hardware driver interfaces for STM32 microcontroller, LiDAR, and RealSense camera</description>
+  <maintainer email="aahil.aref@gmail.com">Aahil Shaikh</maintainer>
+  <license>Apache-2.0</license>
+
+  <depend>rclpy</depend>
+  <depend>std_msgs</depend>
+  <depend>std_srvs</depend>
+  <depend>sensor_msgs</depend>
+  <depend>geometry_msgs</depend>
+  <depend>intel_sys_interfaces</depend>
+  <depend>realsense2_camera</depend>
+  <depend>unitree_lidar_ros2</depend>
+
+  <test_depend>ament_copyright</test_depend>
+  <test_depend>ament_flake8</test_depend>
+  <test_depend>ament_pep257</test_depend>
+  <test_depend>python3-pytest</test_depend>
+
+  <export>
+    <build_type>ament_python</build_type>
+  </export>
+</package>

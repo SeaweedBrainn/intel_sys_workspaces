@@ -1,0 +1,15 @@
+repositories:
+  point_lio_ros2:
+    type: git
+    url: https://github.com/dfloreaa/point_lio_ros2.git
+    version: a8e2d0d5090af97ead8dd4fac3d37cf3dbb33ff7
+  unilidar_sdk2:
+    type: git
+    url: https://github.com/unitreerobotics/unilidar_sdk2.git
+    version: 0e3c51f512e6b8ff60b8c32f160b412cb48445c2
+  realsense-ros:
+    type: git
+    url: https://github.com/IntelRealSense/realsense-ros.git
+    version: df42a9f1809b19fbf116380e73aedfe99ea5899d
+diff --git a/docker/entrypoint.sh b/docker/entrypoint.sh
+new file mode 100755

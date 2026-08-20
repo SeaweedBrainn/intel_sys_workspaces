@@ -11,7 +11,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     python3-rosdep python3-vcstool python3-serial python3-pip python3-tqdm \
     ros-dev-tools gnupg software-properties-common \
     ros-humble-pcl-conversions ros-humble-pcl-ros \
-    ros-humble-robot-state-publisher ros-humble-joint-state-publisher ros-humble-xacro \
+    ros-humble-robot-state-publisher ros-humble-joint-state-publisher ros-humble-joint-state-publisher-gui ros-humble-xacro \
     ros-humble-robot-localization ros-humble-navigation2 ros-humble-nav2-bringup \
     ros-humble-teleop-twist-keyboard ros-humble-teleop-twist-joy ros-humble-joy \
     ros-humble-cv-bridge ros-humble-image-transport \

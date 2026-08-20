@@ -5,17 +5,11 @@ export TARGETARCH=arm64
 export DOCKER_RUNTIME=nvidia
 
 echo "================================================"
-echo " Building autonomy-jetson for Jetson Orin NX"
+echo " Building intel-sys for Jetson Orin NX"
 echo "================================================"
 
-# create workspace folders if they don't exist
-echo "Ensuring workspace directories exist..."
-mkdir -p ros2_ws/src
-mkdir -p unilidar_sdk2-2.0.4/unitree_lidar_ros2/src
-mkdir -p catkin_point_lio_unilidar/src
-mkdir -p ws_livox/src
-
-xhost +local:docker
+# Allow local docker GUI access
+xhost +local:docker 2>/dev/null || true
 
 echo "[1/3] Building image..."
 docker compose build
@@ -26,4 +20,4 @@ docker compose up -d
 echo "[3/3] Opening shell — type 'exit' to leave"
 echo "(container keeps running in background)"
 echo ""
-docker compose exec autonomy-jetson bash
+docker compose exec intel-sys bash

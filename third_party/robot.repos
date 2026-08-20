@@ -11,5 +11,3 @@ repositories:
     type: git
     url: https://github.com/IntelRealSense/realsense-ros.git
     version: df42a9f1809b19fbf116380e73aedfe99ea5899d
-diff --git a/docker/entrypoint.sh b/docker/entrypoint.sh
-new file mode 100755

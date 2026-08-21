@@ -28,15 +28,7 @@ def generate_launch_description():
     robot_state_publisher_node = Node(
         package='robot_state_publisher',
         executable='robot_state_publisher',
-        parameters=[{
-            'robot_description': robot_description,
-            'use_sim_time': LaunchConfiguration('use_sim_time')
-        }]
-    )
-
-    joint_state_publisher_node = Node(
-        package='joint_state_publisher',
-        executable='joint_state_publisher',
+        output='screen',
         parameters=[{
             'robot_description': robot_description,
             'use_sim_time': LaunchConfiguration('use_sim_time')
@@ -46,6 +38,5 @@ def generate_launch_description():
     return LaunchDescription([
         model_arg,
         use_sim_time_arg,
-        joint_state_publisher_node,
         robot_state_publisher_node
     ])

@@ -15,6 +15,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ros-humble-robot-localization ros-humble-navigation2 ros-humble-nav2-bringup \
     ros-humble-teleop-twist-keyboard ros-humble-teleop-twist-joy ros-humble-joy \
     ros-humble-cv-bridge ros-humble-image-transport \
+    ros-humble-ros-gz ros-humble-pointcloud-to-laserscan \
     libeigen3-dev libpcl-dev \
  && rm -rf /var/lib/apt/lists/*
 
@@ -46,7 +47,9 @@ RUN apt-get update \
 FROM base AS development
 COPY --from=third-party-builder /opt/intel_sys/third_party /opt/intel_sys/third_party
 COPY docker/entrypoint.sh /ros_entrypoint_intel_sys.sh
-RUN chmod +x /ros_entrypoint_intel_sys.sh
+RUN chmod +x /ros_entrypoint_intel_sys.sh \
+ && echo "source /ros_entrypoint_intel_sys.sh" >> /etc/bash.bashrc \
+ && echo "source /ros_entrypoint_intel_sys.sh" >> /root/.bashrc
 WORKDIR /workspaces/intel_sys
 ENTRYPOINT ["/ros_entrypoint_intel_sys.sh"]
 CMD ["bash"]

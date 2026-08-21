@@ -2,17 +2,19 @@
 set -e
 
 # Intel Sys Universal Docker Runner Script
-# Auto-detects x86_64 Desktop vs ARM64 NVIDIA Jetson.
+# Guarantees that multiple terminal sessions connect to the same shared container.
 #
 # Usage:
-#   ./run_docker.sh              # Start or attach to container with interactive bash
-#   ./run_docker.sh --build      # Rebuild image before entering
-#   ./run_docker.sh <cmd>        # Run a specific command inside the container (e.g. ./run_docker.sh colcon test)
+#   ./run_docker.sh              # Start or attach to the shared container shell
+#   ./run_docker.sh --build      # Rebuild image and restart shared container
+#   ./run_docker.sh --down       # Stop and remove the shared container
+#   ./run_docker.sh <cmd>        # Run a command inside the shared container (e.g. ./run_docker.sh colcon test)
 
 SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 cd "$SCRIPT_DIR"
 
 REBUILD=false
+STOP_CONTAINER=false
 PASSTHROUGH_ARGS=()
 
 # 1. Hardware Architecture & Runtime Auto-Detection
@@ -32,6 +34,9 @@ for arg in "$@"; do
         --build|-b)
             REBUILD=true
             ;;
+        --down|--stop)
+            STOP_CONTAINER=true
+            ;;
         --jetson)
             export TARGETARCH=arm64
             export DOCKER_RUNTIME=nvidia
@@ -48,32 +53,37 @@ for arg in "$@"; do
     esac
 done
 
-# 2. Allow X11 GUI forwarding for RViz / GUI tools if display is available
+# 2. Stop container if requested
+if [ "$STOP_CONTAINER" = true ]; then
+    echo "Stopping intel-sys container..."
+    docker compose down
+    exit 0
+fi
+
+# 3. Allow X11 GUI forwarding for RViz / Gazebo if display is available
 if [ -n "$DISPLAY" ]; then
     xhost +local:docker 2>/dev/null || true
 fi
 
-# 3. Rebuild if requested
+# 4. Rebuild if requested
 if [ "$REBUILD" = true ]; then
-    echo "🔨 Building Docker image (intel-sys) for ${PLATFORM_NAME}..."
+    echo "Building Docker image (intel-sys) for ${PLATFORM_NAME}..."
+    docker compose down 2>/dev/null || true
     docker compose build intel-sys
 fi
 
-# 4. Check if container is already running
-CONTAINER_ID=$(docker compose ps -q intel-sys 2>/dev/null || true)
+# 5. Ensure the shared background container is running
+RUNNING=$(docker inspect -f '{{.State.Running}}' intel-sys 2>/dev/null || echo "false")
 
-if [ -n "$CONTAINER_ID" ] && [ "$(docker inspect -f '{{.State.Running}}' "$CONTAINER_ID" 2>/dev/null)" = "true" ]; then
-    echo "🔌 Connecting to running container ($CONTAINER_ID on ${PLATFORM_NAME})..."
-    if [ ${#PASSTHROUGH_ARGS[@]} -eq 0 ]; then
-        docker compose exec intel-sys bash
-    else
-        docker compose exec intel-sys "${PASSTHROUGH_ARGS[@]}"
-    fi
+if [ "$RUNNING" != "true" ]; then
+    echo "Starting shared intel-sys container on ${PLATFORM_NAME}..."
+    docker compose up -d intel-sys
+fi
+
+# 6. Execute inside the shared container
+if [ ${#PASSTHROUGH_ARGS[@]} -eq 0 ]; then
+    echo "🔌 Connected to shared container (intel-sys). Type 'exit' to leave shell."
+    docker compose exec intel-sys /ros_entrypoint_intel_sys.sh bash
 else
-    echo "🚀 Starting interactive container on ${PLATFORM_NAME}..."
-    if [ ${#PASSTHROUGH_ARGS[@]} -eq 0 ]; then
-        docker compose run --rm intel-sys bash
-    else
-        docker compose run --rm intel-sys "${PASSTHROUGH_ARGS[@]}"
-    fi
+    docker compose exec intel-sys /ros_entrypoint_intel_sys.sh "${PASSTHROUGH_ARGS[@]}"
 fi

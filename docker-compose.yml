@@ -1,5 +1,6 @@
 services:
   intel-sys:
+    container_name: intel-sys
     build:
       context: .
       args:

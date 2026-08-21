@@ -14,6 +14,8 @@ fi
 # Source workspace install space if built
 if [ -f "/workspaces/intel_sys/install/setup.bash" ]; then
   source "/workspaces/intel_sys/install/setup.bash"
+  export GZ_SIM_RESOURCE_PATH="/workspaces/intel_sys/install/intel_sys_description/share:${GZ_SIM_RESOURCE_PATH}"
+  export IGN_GAZEBO_RESOURCE_PATH="/workspaces/intel_sys/install/intel_sys_description/share:${IGN_GAZEBO_RESOURCE_PATH}"
 fi
 
 if [ $# -eq 0 ]; then

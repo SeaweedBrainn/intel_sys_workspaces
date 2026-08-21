@@ -3,13 +3,20 @@
 <package format="3">
   <name>intel_sys_sim</name>
   <version>1.0.0</version>
-  <description>Simulation launch and world definitions for Gazebo / Isaac Sim</description>
+  <description>Gazebo Harmonic simulation bridge and worlds for Intel Sys robot</description>
   <maintainer email="aahil.aref@gmail.com">Aahil Shaikh</maintainer>
   <license>Apache-2.0</license>
 
   <buildtool_depend>ament_cmake</buildtool_depend>
 
   <depend>intel_sys_description</depend>
+  <depend>ros_gz_sim</depend>
+  <depend>ros_gz_bridge</depend>
+  <depend>ros_gz_image</depend>
+  <depend>geometry_msgs</depend>
+  <depend>sensor_msgs</depend>
+  <depend>nav_msgs</depend>
+  <depend>rosgraph_msgs</depend>
 
   <test_depend>ament_lint_auto</test_depend>
   <test_depend>ament_lint_common</test_depend>

@@ -14,25 +14,39 @@ def generate_launch_description():
 
     default_rviz_config = PathJoinSubstitution([bringup_pkg, 'rviz', 'nav2_default_view.rviz'])
 
+    # Declare arguments
+    headless_arg = DeclareLaunchArgument('headless', default_value='false', description='Run Gazebo without GUI')
     use_rviz_arg = DeclareLaunchArgument('use_rviz', default_value='true', description='Launch RViz2 interface')
+    x_arg = DeclareLaunchArgument('x', default_value='0.0', description='Spawn X position')
+    y_arg = DeclareLaunchArgument('y', default_value='0.0', description='Spawn Y position')
+    z_arg = DeclareLaunchArgument('z', default_value='0.05', description='Spawn Z position')
+    yaw_arg = DeclareLaunchArgument('yaw', default_value='0.0', description='Spawn Yaw orientation')
 
-    # 1. Simulation Bridge / World
+    # 1. Simulation Bridge / World (Spawns robot, Gazebo plugins, sensor bridges)
     sim_launch = IncludeLaunchDescription(
-        PythonLaunchDescriptionSource(PathJoinSubstitution([sim_pkg, 'launch', 'sim.launch.py']))
-    )
-
-    # 2. Navigation with simulation time
-    navigation_launch = IncludeLaunchDescription(
-        PythonLaunchDescriptionSource(PathJoinSubstitution([nav_pkg, 'launch', 'navigation.launch.py'])),
+        PythonLaunchDescriptionSource(PathJoinSubstitution([sim_pkg, 'launch', 'sim.launch.py'])),
         launch_arguments={
+            'headless': LaunchConfiguration('headless'),
             'use_sim_time': 'true',
-            'use_ekf': 'true',
-            'use_point_lio': 'false',
-            'autostart': 'true',
+            'x': LaunchConfiguration('x'),
+            'y': LaunchConfiguration('y'),
+            'z': LaunchConfiguration('z'),
+            'yaw': LaunchConfiguration('yaw'),
         }.items()
     )
 
-    # 3. RViz2
+    # 2. Navigation (Temporarily commented out per request)
+    # navigation_launch = IncludeLaunchDescription(
+    #     PythonLaunchDescriptionSource(PathJoinSubstitution([nav_pkg, 'launch', 'navigation.launch.py'])),
+    #     launch_arguments={
+    #         'use_sim_time': 'true',
+    #         'use_ekf': 'true',
+    #         'use_point_lio': 'false',
+    #         'autostart': 'true',
+    #     }.items()
+    # )
+
+    # 3. RViz2 Visualizer
     rviz_node = Node(
         package='rviz2',
         executable='rviz2',
@@ -44,8 +58,13 @@ def generate_launch_description():
     )
 
     return LaunchDescription([
+        headless_arg,
         use_rviz_arg,
+        x_arg,
+        y_arg,
+        z_arg,
+        yaw_arg,
         sim_launch,
-        navigation_launch,
+        # navigation_launch,
         rviz_node
     ])

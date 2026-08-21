@@ -15,31 +15,57 @@
       },
       "followMode": "follow-pose",
       "followTf": "base_footprint",
+      "displayFrame": "base_link",
       "scene": {
         "enableStats": false,
+        "meshUpAxis": "z_up",
+        "meshCoordinateFrame": "z_up",
         "transforms": {
-          "showLabels": true,
-          "axisScale": 0.3
+          "showLabels": false,
+          "axisScale": 0.3,
+          "enableTransforms": false
         }
       },
       "transforms": {
+        "showTransforms": false,
         "frame:odom": {
-          "visible": true
+          "visible": false
         },
         "frame:base_footprint": {
-          "visible": true
+          "visible": false
         },
         "frame:base_link": {
-          "visible": true
+          "visible": false
         },
         "frame:lidar_link": {
-          "visible": true
+          "visible": false
         },
         "frame:camera_link": {
-          "visible": true
+          "visible": false
         },
         "frame:imu_link": {
-          "visible": true
+          "visible": false
+        },
+        "frame:camera_color_frame": {
+          "visible": false
+        },
+        "frame:camera_depth_frame": {
+          "visible": false
+        },
+        "frame:wheel_left_front_link": {
+          "visible": false
+        },
+        "frame:wheel_right_front_link": {
+          "visible": false
+        },
+        "frame:wheel_left_back_link": {
+          "visible": false
+        },
+        "frame:wheel_right_back_link": {
+          "visible": false
+        },
+        "frame:back_shell_link": {
+          "visible": false
         }
       },
       "topics": {
@@ -48,6 +74,8 @@
           "colorField": "z",
           "colorMode": "colormap",
           "colorMap": "turbo",
+          "minValue": -0.2,
+          "maxValue": 1.5,
           "pointSize": 3.0
         },
         "/scan": {
@@ -63,7 +91,8 @@
           "color": "#ffaa00"
         },
         "/robot_description": {
-          "visible": true
+          "visible": true,
+          "meshUpAxis": "z_up"
         }
       },
       "publish": {
@@ -72,6 +101,7 @@
       }
     },
     "Image!1": {
+      "imageTopic": "/camera/image_raw",
       "cameraTopic": "/camera/image_raw",
       "transformMarkers": false,
       "synchronize": false

@@ -6,7 +6,9 @@ services:
       args:
         TARGETARCH: ${TARGETARCH:-amd64}
     image: intel-sys:${TARGETARCH:-amd64}
-    network_mode: host
+    ports:
+      - "8765:8765"
+    ipc: host
     privileged: true
     environment:
       DISPLAY: ${DISPLAY:-}

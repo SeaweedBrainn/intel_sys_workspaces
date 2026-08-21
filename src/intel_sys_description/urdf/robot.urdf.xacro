@@ -113,7 +113,7 @@
     <origin xyz="0.097397 -0.086125 0.04508" rpy="1.5708 1.5708 0"/>
     <parent link="base_link"/>
     <child link="wheel_right_front_link"/>
-    <axis xyz="0 0 1"/>
+    <axis xyz="0 0 -1"/>
   </joint>
 
   <!-- Front Left Wheel -->
@@ -137,7 +137,7 @@
     <origin xyz="0.097397 0.086125 0.04508" rpy="1.5708 1.5708 0"/>
     <parent link="base_link"/>
     <child link="wheel_left_front_link"/>
-    <axis xyz="0 0 1"/>
+    <axis xyz="0 0 -1"/>
   </joint>
 
   <!-- Back Right Wheel -->
@@ -161,7 +161,7 @@
     <origin xyz="-0.097397 -0.086125 0.04508" rpy="1.5708 1.5708 0"/>
     <parent link="base_link"/>
     <child link="wheel_right_back_link"/>
-    <axis xyz="0 0 1"/>
+    <axis xyz="0 0 -1"/>
   </joint>
 
   <!-- Back Left Wheel -->
@@ -185,7 +185,7 @@
     <origin xyz="-0.097397 0.086125 0.04508" rpy="1.5708 1.5708 0"/>
     <parent link="base_link"/>
     <child link="wheel_left_back_link"/>
-    <axis xyz="0 0 1"/>
+    <axis xyz="0 0 -1"/>
   </joint>
 
   <!-- ==================== SENSORS ==================== -->

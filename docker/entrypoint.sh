@@ -1,5 +1,4 @@
 #!/usr/bin/env bash
-set -e
 
 # Source ROS 2 base environment
 if [ -f "/opt/ros/${ROS_DISTRO}/setup.bash" ]; then
@@ -18,9 +17,14 @@ if [ -f "/workspaces/intel_sys/install/setup.bash" ]; then
   export IGN_GAZEBO_RESOURCE_PATH="/workspaces/intel_sys/install/intel_sys_description/share:${IGN_GAZEBO_RESOURCE_PATH}"
 fi
 
-if [ $# -eq 0 ]; then
-  exec bash
-else
-  exec "$@"
+# If being sourced by an interactive shell (.bashrc), return cleanly
+if [[ "${BASH_SOURCE[0]}" != "${0}" ]]; then
+  return 0 2>/dev/null || exit 0
 fi
 
+# If executed directly as container entrypoint with arguments
+if [ $# -gt 0 ]; then
+  exec "$@"
+else
+  exec bash
+fi

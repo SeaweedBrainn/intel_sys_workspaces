@@ -60,7 +60,7 @@ if [ "$STOP_CONTAINER" = true ]; then
     exit 0
 fi
 
-# 3. Allow X11 GUI forwarding for RViz / Gazebo if display is available
+# 3. Allow X11 GUI forwarding for Gazebo if display is available
 if [ -n "$DISPLAY" ]; then
     xhost +local:docker 2>/dev/null || true
 fi
@@ -80,10 +80,18 @@ if [ "$RUNNING" != "true" ]; then
     docker compose up -d intel-sys
 fi
 
-# 6. Execute inside the shared container
+# 6. Execute inside the shared container with interactive TTY support
 if [ ${#PASSTHROUGH_ARGS[@]} -eq 0 ]; then
     echo "Connected to shared container (intel-sys). Type 'exit' to leave shell."
-    docker compose exec intel-sys /ros_entrypoint_intel_sys.sh bash
+    if [ -t 0 ]; then
+        docker exec -it intel-sys bash
+    else
+        docker exec -i intel-sys bash
+    fi
 else
-    docker compose exec intel-sys /ros_entrypoint_intel_sys.sh "${PASSTHROUGH_ARGS[@]}"
+    if [ -t 0 ]; then
+        docker exec -it intel-sys /ros_entrypoint_intel_sys.sh "${PASSTHROUGH_ARGS[@]}"
+    else
+        docker exec -i intel-sys /ros_entrypoint_intel_sys.sh "${PASSTHROUGH_ARGS[@]}"
+    fi
 fi

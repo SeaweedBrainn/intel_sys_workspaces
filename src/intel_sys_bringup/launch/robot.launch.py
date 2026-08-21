@@ -31,7 +31,11 @@ def generate_launch_description():
 
     # 2. Hardware Drivers (STM32 bridge, mecanum controller, LiDAR, RealSense)
     hardware_launch = IncludeLaunchDescription(
-        PythonLaunchDescriptionSource(PathJoinSubstitution([hardware_pkg, 'launch', 'hardware.launch.py']))
+        PythonLaunchDescriptionSource(PathJoinSubstitution([hardware_pkg, 'launch', 'hardware.launch.py'])),
+        launch_arguments={
+            'port': LaunchConfiguration('port'),
+            'baudrate': LaunchConfiguration('baudrate'),
+        }.items()
     )
 
     # 3. Navigation Stack (Odometry, EKF, Point-LIO, Nav2)

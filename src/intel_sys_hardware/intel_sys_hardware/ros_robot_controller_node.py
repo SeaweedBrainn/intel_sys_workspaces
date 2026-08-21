@@ -63,8 +63,7 @@ class RosRobotControllerNode(Node):
         self.board.set_motor_speed([[1, 0], [2, 0], [3, 0], [4, 0]])
         self.clock = self.get_clock()
 
-        self.worker_thread = threading.Thread(target=self.pub_loop, daemon=True)
-        self.worker_thread.start()
+        self.timer = self.create_timer(0.02, self.pub_loop)
 
         self.create_service(Trigger, 'init_finish', self.get_node_state)
         self.get_logger().info('STM32 controller bridge initialized and running.')
@@ -74,14 +73,12 @@ class RosRobotControllerNode(Node):
         return response
 
     def pub_loop(self):
-        while self.running and rclpy.ok():
-            if self.reception_enabled:
-                self.pub_button_data()
-                self.pub_joy_data()
-                self.pub_imu_data()
-                self.pub_sbus_data()
-                self.pub_battery_data()
-            time.sleep(0.02)
+        if self.running and self.reception_enabled:
+            self.pub_button_data()
+            self.pub_joy_data()
+            self.pub_imu_data()
+            self.pub_sbus_data()
+            self.pub_battery_data()
 
     def enable_reception_cb(self, msg):
         self.reception_enabled = msg.data
@@ -231,7 +228,7 @@ class RosRobotControllerNode(Node):
             msg.angular_velocity.x = math.radians(gx)
             msg.angular_velocity.y = math.radians(gy)
             msg.angular_velocity.z = math.radians(gz)
-            msg.orientation_covariance = [0.01, 0.0, 0.0, 0.0, 0.01, 0.0, 0.0, 0.0, 0.01]
+            msg.orientation_covariance = [-1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
             msg.angular_velocity_covariance = [0.01, 0.0, 0.0, 0.0, 0.01, 0.0, 0.0, 0.0, 0.01]
             msg.linear_acceleration_covariance = [0.0004, 0.0, 0.0, 0.0, 0.0004, 0.0, 0.0, 0.0, 0.004]
             self.imu_pub.publish(msg)

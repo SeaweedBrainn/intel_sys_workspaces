@@ -16,19 +16,10 @@ cd "$SCRIPT_DIR"
 REBUILD=false
 STOP_CONTAINER=false
 PASSTHROUGH_ARGS=()
+ENABLE_NVIDIA=auto
+FORCED_ARCH=""
 
-# 1. Hardware Architecture & Runtime Auto-Detection
-ARCH=$(uname -m)
-if [ "$ARCH" = "aarch64" ] || [ "$ARCH" = "arm64" ]; then
-    export TARGETARCH=arm64
-    export DOCKER_RUNTIME=${DOCKER_RUNTIME:-nvidia}
-    PLATFORM_NAME="NVIDIA Jetson (ARM64 with GPU runtime)"
-else
-    export TARGETARCH=amd64
-    export DOCKER_RUNTIME=${DOCKER_RUNTIME:-runc}
-    PLATFORM_NAME="Desktop/WSL (x86_64)"
-fi
-
+# 1. Parse arguments
 for arg in "$@"; do
     case "$arg" in
         --build|-b)
@@ -37,15 +28,17 @@ for arg in "$@"; do
         --down|--stop)
             STOP_CONTAINER=true
             ;;
+        --nvidia)
+            ENABLE_NVIDIA=true
+            ;;
+        --cpu)
+            ENABLE_NVIDIA=false
+            ;;
         --jetson)
-            export TARGETARCH=arm64
-            export DOCKER_RUNTIME=nvidia
-            PLATFORM_NAME="NVIDIA Jetson (Forced ARM64)"
+            FORCED_ARCH="arm64"
             ;;
         --desktop)
-            export TARGETARCH=amd64
-            export DOCKER_RUNTIME=runc
-            PLATFORM_NAME="Desktop (Forced x86_64)"
+            FORCED_ARCH="amd64"
             ;;
         *)
             PASSTHROUGH_ARGS+=("$arg")
@@ -53,7 +46,37 @@ for arg in "$@"; do
     esac
 done
 
-# 2. Stop container if requested
+# 2. Hardware Architecture & GPU Auto-Detection
+ARCH=${FORCED_ARCH:-$(uname -m)}
+if [ "$ARCH" = "aarch64" ] || [ "$ARCH" = "arm64" ]; then
+    export TARGETARCH=arm64
+    export DOCKER_RUNTIME=${DOCKER_RUNTIME:-nvidia}
+    export COMPOSE_FILE="docker-compose.yml:docker-compose.nvidia.yml"
+    PLATFORM_NAME="NVIDIA Jetson (ARM64 with GPU runtime)"
+else
+    export TARGETARCH=amd64
+    export DOCKER_RUNTIME=${DOCKER_RUNTIME:-runc}
+
+    # Auto-detect NVIDIA GPU availability on x86_64 Desktop/WSL
+    HAS_NVIDIA=false
+    if [ "$ENABLE_NVIDIA" = "true" ]; then
+        HAS_NVIDIA=true
+    elif [ "$ENABLE_NVIDIA" = "auto" ]; then
+        if command -v nvidia-smi >/dev/null 2>&1 && nvidia-smi >/dev/null 2>&1; then
+            HAS_NVIDIA=true
+        fi
+    fi
+
+    if [ "$HAS_NVIDIA" = "true" ]; then
+        export COMPOSE_FILE="docker-compose.yml:docker-compose.nvidia.yml"
+        PLATFORM_NAME="Desktop/WSL (x86_64 with NVIDIA GPU acceleration)"
+    else
+        export COMPOSE_FILE="docker-compose.yml"
+        PLATFORM_NAME="Desktop/WSL (x86_64 standard CPU)"
+    fi
+fi
+
+# 3. Stop container if requested
 if [ "$STOP_CONTAINER" = true ]; then
     echo "Stopping intel-sys container..."
     docker compose down

@@ -17,7 +17,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ros-humble-cv-bridge ros-humble-image-transport \
     ros-humble-ros-gz ros-humble-pointcloud-to-laserscan \
     ros-humble-foxglove-bridge \
-    libeigen3-dev libpcl-dev \
+    libeigen3-dev libpcl-dev mesa-utils pciutils \
  && rm -rf /var/lib/apt/lists/*
 
 RUN install -d -m 0755 /etc/apt/keyrings \

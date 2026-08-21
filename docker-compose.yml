@@ -11,16 +11,13 @@ services:
     ipc: host
     privileged: true
     environment:
-      DISPLAY: ${DISPLAY:-}
-      ROS_DOMAIN_ID: ${ROS_DOMAIN_ID:-0}
-      QT_X11_NO_MITSHM: "1"
+      - DISPLAY=${DISPLAY:-}
+      - ROS_DOMAIN_ID=${ROS_DOMAIN_ID:-0}
     volumes:
       - ./:/workspaces/intel_sys
       - /tmp/.X11-unix:/tmp/.X11-unix
       - /run/udev:/run/udev:ro
       - /dev/bus/usb:/dev/bus/usb
-    devices:
-      - /dev/dri:/dev/dri
     stdin_open: true
     tty: true
     runtime: ${DOCKER_RUNTIME:-runc}

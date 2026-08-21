@@ -46,16 +46,20 @@ intel_sys_workspaces/
 [`run_docker.sh`](file:///c:/Users/aahil/Documents/Coding/Robotics/intel_sys_workspaces/run_docker.sh) auto-detects whether you are running on an **x86_64 PC/WSL** or an **ARM64 NVIDIA Jetson Orin NX** and manages a shared multi-terminal container:
 
 ```bash
-# 1. Start or attach to the shared container shell:
+# 1. Start or attach to the shared container shell (auto-detects NVIDIA RTX GPU on Desktop / Tegra on Jetson):
 ./run_docker.sh
 
-# 2. Rebuild the image before entering:
+# 2. Force specific GPU/CPU modes (optional):
+./run_docker.sh --nvidia     # Force NVIDIA GPU pass-through
+./run_docker.sh --cpu        # Force standard CPU mode
+
+# 3. Rebuild the image before entering:
 ./run_docker.sh --build
 
-# 3. Stop the container when finished:
+# 4. Stop the container when finished:
 ./run_docker.sh --down
 
-# 4. Run any ROS 2 command directly inside the container:
+# 5. Run any ROS 2 command directly inside the container:
 ./run_docker.sh ros2 launch intel_sys_bringup robot.launch.py
 ./run_docker.sh colcon test
 ```

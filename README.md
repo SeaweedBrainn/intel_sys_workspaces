@@ -14,9 +14,9 @@ intel_sys_workspaces/
 ├── third_party/                # Pinned third-party upstream repositories (robot.repos)
 ├── src/
 │   ├── intel_sys_interfaces/   # Custom STM32 message and service definitions
-│   ├── intel_sys_hardware/     # STM32 serial bridge, mecanum velocity controller & sensor drivers
+│   ├── intel_sys_hardware/     # STM32 bridge, mecanum controller, raw wheel odom publisher & sensor drivers
 │   ├── intel_sys_description/  # Unified robot URDF/Xacro, 3D meshes & state publisher
-│   ├── intel_sys_localization/ # Mecanum odometry, decoupled EKF fusion & Point-LIO 3D LiDAR odometry
+│   ├── intel_sys_localization/ # Pure sensor fusion: robot_localization EKF & Point-LIO 3D LiDAR odometry
 │   ├── intel_sys_navigation/   # Nav2 stack configuration, costmaps & autonomous path planning
 │   ├── intel_sys_sim/          # Gazebo Harmonic simulation, worlds, and ros_gz_bridge
 │   └── intel_sys_bringup/      # Top-level system coordinators and Foxglove Studio dashboard
@@ -32,9 +32,9 @@ intel_sys_workspaces/
 | Package | Type | Description |
 | :--- | :--- | :--- |
 | **`intel_sys_interfaces`** | `ament_cmake` | 15 custom ROS 2 messages (`MotorsState`, `MotorState`, `LedState`, `BuzzerState`, `ButtonState`, `Sbus`, `OLEDState`, `BusServoState`, `PWMServoState`) and 2 services. |
-| **`intel_sys_hardware`** | `ament_python` | STM32 serial driver bridge (`stm32_bridge` with MultiThreadedExecutor), inverse mecanum velocity controller with `/joint_states` publishing (`mecanum_controller`), sensor launchers, and udev rules. |
+| **`intel_sys_hardware`** | `ament_python` | STM32 serial driver bridge (`stm32_bridge`), inverse mecanum velocity controller (`mecanum_controller`), raw wheel odometry publisher (`odom_publisher`), sensor launchers, and udev rules. |
 | **`intel_sys_description`** | `ament_cmake` | Unified `robot.urdf.xacro`, chassis and mecanum wheel STL meshes, Gazebo `MecanumDrive` and sensor plugins, and one-click `view_robot.launch.py`. |
-| **`intel_sys_localization`** | `ament_python` | Dead-reckoning `odom_publisher`, decoupled `robot_localization` EKF configuration, Unitree L2 Point-LIO 3D LiDAR odometry, and unit tests. |
+| **`intel_sys_localization`** | `ament_python` | Decoupled `robot_localization` EKF multi-sensor fusion, Unitree L2 Point-LIO 3D LiDAR odometry, and configuration files. |
 | **`intel_sys_navigation`** | `ament_cmake` | Nav2 omnidirectional navigation stack (DWB controller, NavFn planner, global/local costmaps, behavior trees). |
 | **`intel_sys_sim`** | `ament_cmake` | Gazebo Harmonic simulation environment (`default.sdf`), model spawner, and `ros_gz_bridge` configuration. |
 | **`intel_sys_bringup`** | `ament_cmake` | Top-level system coordinators: `robot.launch.py`, `sim.launch.py`, `teleop.launch.py`, and `foxglove_layout.json`. |

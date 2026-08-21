@@ -12,8 +12,8 @@
   <depend>nav_msgs</depend>
   <depend>sensor_msgs</depend>
   <depend>tf2_ros</depend>
-  <depend>intel_sys_interfaces</depend>
   <depend>robot_localization</depend>
+  <exec_depend>point_lio</exec_depend>
 
   <test_depend>ament_copyright</test_depend>
   <test_depend>ament_flake8</test_depend>

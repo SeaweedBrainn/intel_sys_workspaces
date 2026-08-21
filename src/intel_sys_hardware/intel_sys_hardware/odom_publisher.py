@@ -55,7 +55,7 @@ class MecanumOdometryIntegrator:
         k = (self.L + self.W) / 2.0
         self.vx = (self.r / 4.0) * (w1 + w2 + w3 + w4)
         self.vy = (self.r / 4.0) * (-w1 + w2 + w3 - w4)
-        self.wz = (self.r / (4.0 * k)) * (-w1 + w2 - w3 + w4)
+        self.wz = (self.r / (4.0 * k)) * (-w1 - w2 + w3 + w4)
         return self.vx, self.vy, self.wz
 
     def update_from_twist(self, vx: float, vy: float, wz: float):
@@ -88,7 +88,7 @@ class OdometryPublisher(Node):
         self.declare_parameter('base_frame', 'base_footprint')
         self.declare_parameter('publish_tf', False)
         self.declare_parameter('odom_topic', 'odom')
-        self.declare_parameter('motor_topic', 'ros_robot_controller/motors')
+        self.declare_parameter('motor_topic', 'set_motor')
         self.declare_parameter('cmd_vel_topic', 'cmd_vel')
         self.declare_parameter('rate_hz', 50.0)
 
@@ -117,13 +117,14 @@ class OdometryPublisher(Node):
         self.timer = self.create_timer(1.0 / rate_hz, self.update_and_publish)
 
         self.get_logger().info(
-            f'Odom publisher started on topic {odom_topic} (frame: {self.odom_frame} -> {self.base_frame}, publish_tf={self.publish_tf})'
+            f'Raw wheel odom publisher started on topic {odom_topic} (frame: {self.odom_frame} -> {self.base_frame}, publish_tf={self.publish_tf})'
         )
 
     def motor_callback(self, msg: MotorsState):
         if len(msg.data) >= 4:
+            # Motors 3 and 4 have inverted physical polarity in hardware protocol
             self.integrator.forward_kinematics(
-                msg.data[0].rps, msg.data[1].rps, msg.data[2].rps, msg.data[3].rps
+                msg.data[0].rps, msg.data[1].rps, -msg.data[2].rps, -msg.data[3].rps
             )
 
     def cmd_vel_callback(self, msg: Twist):

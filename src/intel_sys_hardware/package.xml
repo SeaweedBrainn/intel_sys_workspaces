@@ -12,7 +12,10 @@
   <depend>std_srvs</depend>
   <depend>sensor_msgs</depend>
   <depend>geometry_msgs</depend>
+  <depend>nav_msgs</depend>
+  <depend>tf2_ros</depend>
   <depend>intel_sys_interfaces</depend>
+  <depend>python3-serial</depend>
   <depend>realsense2_camera</depend>
   <depend>unitree_lidar_ros2</depend>
 

@@ -109,7 +109,7 @@ class RosRobotControllerNode(Node):
         data = [[i.id, i.rps] for i in msg.data]
         self.board.set_motor_speed(data)
 
-    def set_oled_text(self, msg):
+    def set_oled_state(self, msg):
         self.board.set_oled_text(int(msg.index), msg.text)
 
     def set_pwm_servo_state(self, msg):

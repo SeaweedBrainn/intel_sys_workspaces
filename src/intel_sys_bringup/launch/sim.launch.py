@@ -9,10 +9,13 @@ from launch_ros.substitutions import FindPackageShare
 
 def generate_launch_description():
     sim_pkg = FindPackageShare('intel_sys_sim')
+    loc_pkg = FindPackageShare('intel_sys_localization')
     nav_pkg = FindPackageShare('intel_sys_navigation')
 
     # Declare arguments
     headless_arg = DeclareLaunchArgument('headless', default_value='false', description='Run Gazebo without GUI')
+    use_ekf_arg = DeclareLaunchArgument('use_ekf', default_value='true', description='Run EKF sensor fusion in sim')
+    use_point_lio_arg = DeclareLaunchArgument('use_point_lio', default_value='false', description='Run Point-LIO LiDAR odometry in sim')
     use_nav_arg = DeclareLaunchArgument('use_nav', default_value='false', description='Launch Nav2 navigation stack in sim')
     use_foxglove_arg = DeclareLaunchArgument('use_foxglove', default_value='true', description='Launch Foxglove WebSocket bridge')
     foxglove_port_arg = DeclareLaunchArgument('foxglove_port', default_value='8765', description='Foxglove WebSocket port')
@@ -34,7 +37,17 @@ def generate_launch_description():
         }.items()
     )
 
-    # 2. Navigation (Toggled via use_nav argument)
+    # 2. State Estimation & Localization (EKF & Point-LIO in simulation)
+    localization_launch = IncludeLaunchDescription(
+        PythonLaunchDescriptionSource(PathJoinSubstitution([loc_pkg, 'launch', 'localization.launch.py'])),
+        launch_arguments={
+            'use_sim_time': 'true',
+            'use_ekf': LaunchConfiguration('use_ekf'),
+            'use_point_lio': LaunchConfiguration('use_point_lio'),
+        }.items()
+    )
+
+    # 3. Navigation (Toggled via use_nav argument)
     navigation_launch = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(PathJoinSubstitution([nav_pkg, 'launch', 'navigation.launch.py'])),
         launch_arguments={
@@ -44,7 +57,7 @@ def generate_launch_description():
         condition=IfCondition(LaunchConfiguration('use_nav'))
     )
 
-    # 3. Foxglove Studio WebSocket Bridge
+    # 4. Foxglove Studio WebSocket Bridge
     foxglove_bridge_node = Node(
         package='foxglove_bridge',
         executable='foxglove_bridge',
@@ -60,6 +73,8 @@ def generate_launch_description():
 
     return LaunchDescription([
         headless_arg,
+        use_ekf_arg,
+        use_point_lio_arg,
         use_nav_arg,
         use_foxglove_arg,
         foxglove_port_arg,
@@ -68,6 +83,7 @@ def generate_launch_description():
         z_arg,
         yaw_arg,
         sim_launch,
-        navigation_launch,
+        localization_launch,
+        # navigation_launch,
         foxglove_bridge_node
     ])

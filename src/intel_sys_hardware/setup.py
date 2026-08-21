@@ -25,6 +25,7 @@ setup(
         'console_scripts': [
             'stm32_bridge = intel_sys_hardware.ros_robot_controller_node:main',
             'mecanum_controller = intel_sys_hardware.mecanum_controller:main',
+            'odom_publisher = intel_sys_hardware.odom_publisher:main',
         ],
     },
 )

@@ -1,15 +1,13 @@
 import os
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument
-from launch.substitutions import LaunchConfiguration, Command
+from launch.substitutions import LaunchConfiguration, Command, PathJoinSubstitution
 from launch_ros.actions import Node
 from launch_ros.substitutions import FindPackageShare
 
 def generate_launch_description():
     pkg_share = FindPackageShare('intel_sys_description')
-    default_model_path = os.path.join(
-        pkg_share.find('intel_sys_description'), 'urdf', 'robot.urdf.xacro'
-    )
+    default_model_path = PathJoinSubstitution([pkg_share, 'urdf', 'robot.urdf.xacro'])
 
     model_arg = DeclareLaunchArgument(
         name='model',

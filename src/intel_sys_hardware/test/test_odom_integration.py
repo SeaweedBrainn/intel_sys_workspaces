@@ -1,6 +1,6 @@
 import math
 import pytest
-from intel_sys_localization.odom_publisher import MecanumOdometryIntegrator, yaw_to_quaternion
+from intel_sys_hardware.odom_publisher import MecanumOdometryIntegrator, yaw_to_quaternion
 
 def test_yaw_to_quaternion():
     # Yaw = 0 -> identity orientation (0, 0, 0, 1)
@@ -64,3 +64,28 @@ def test_forward_kinematics_wheel_speeds():
     assert vx == pytest.approx(expected_vx, rel=1e-3)
     assert vy == pytest.approx(0.0, abs=1e-4)
     assert wz == pytest.approx(0.0, abs=1e-4)
+
+def test_round_trip_chassis_speeds_to_odometry():
+    from intel_sys_hardware.mecanum import MecanumChassis
+    chassis = MecanumChassis(wheelbase=0.216, track_width=0.195, wheel_diameter=0.097)
+    integrator = MecanumOdometryIntegrator(wheelbase=0.216, track_width=0.195, wheel_diameter=0.097)
+
+    test_cases = [
+        (0.6, 0.0, 0.0),    # Forward
+        (0.0, 0.4, 0.0),    # Strafe
+        (0.0, 0.0, 1.2),    # Turn
+        (0.5, -0.3, 0.8),   # Mixed omnidirectional motion
+    ]
+
+    for target_vx, target_vy, target_wz in test_cases:
+        motors_msg = chassis.compute_motor_speeds(target_vx, target_vy, target_wz)
+        # Apply physical motor 3 & 4 inversion as in motor_callback
+        calc_vx, calc_vy, calc_wz = integrator.forward_kinematics(
+            motors_msg.data[0].rps,
+            motors_msg.data[1].rps,
+            -motors_msg.data[2].rps,
+            -motors_msg.data[3].rps
+        )
+        assert pytest.approx(calc_vx, rel=1e-3, abs=1e-4) == target_vx
+        assert pytest.approx(calc_vy, rel=1e-3, abs=1e-4) == target_vy
+        assert pytest.approx(calc_wz, rel=1e-3, abs=1e-4) == target_wz

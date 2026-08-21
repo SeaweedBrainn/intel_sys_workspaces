@@ -31,10 +31,24 @@ def generate_launch_description():
         }]
     )
 
+    odom_publisher_node = Node(
+        package='intel_sys_hardware',
+        executable='odom_publisher',
+        name='odom_publisher',
+        output='screen',
+        parameters=[{
+            'odom_topic': 'odom',
+            'motor_topic': 'set_motor',
+            'cmd_vel_topic': 'cmd_vel',
+            'publish_tf': False,
+        }]
+    )
+
     return LaunchDescription([
         port_arg,
         baudrate_arg,
         imu_frame_arg,
         stm32_bridge_node,
-        mecanum_controller_node
+        mecanum_controller_node,
+        odom_publisher_node
     ])

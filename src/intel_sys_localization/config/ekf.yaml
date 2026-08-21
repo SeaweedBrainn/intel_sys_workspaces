@@ -17,12 +17,12 @@ ekf_filter_node:
     publish_acceleration: false
 
     # 1. Wheel Odometry (from mecanum chassis kinematics)
-    # Fuses linear velocities vx, vy to bound drift during rapid movements
+    # Fuses linear velocities vx, vy and angular velocity wz to track motion
     odom0: odom
     odom0_config: [false, false, false,
                    false, false, false,
                    true,  true,  false,
-                   false, false, false,
+                   false, false, true,
                    false, false, false]
     odom0_queue_size: 10
     odom0_nodelay: true

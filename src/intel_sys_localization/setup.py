@@ -23,7 +23,6 @@ setup(
     tests_require=['pytest'],
     entry_points={
         'console_scripts': [
-            'odom_publisher = intel_sys_localization.odom_publisher:main',
         ],
     },
 )

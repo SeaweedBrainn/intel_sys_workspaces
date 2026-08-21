@@ -1,0 +1,151 @@
+{
+  "configById": {
+    "3D!1": {
+      "cameraState": {
+        "perspective": true,
+        "distance": 4.5,
+        "phi": 60,
+        "thetaOffset": 45,
+        "targetOffset": [0, 0, 0],
+        "target": [0, 0, 0],
+        "targetOrientation": [0, 0, 0, 1],
+        "fovy": 45,
+        "near": 0.01,
+        "far": 1000
+      },
+      "followMode": "follow-pose",
+      "followTf": "base_footprint",
+      "scene": {
+        "enableStats": false,
+        "transforms": {
+          "showLabels": true,
+          "axisScale": 0.3
+        }
+      },
+      "transforms": {
+        "frame:odom": {
+          "visible": true
+        },
+        "frame:base_footprint": {
+          "visible": true
+        },
+        "frame:base_link": {
+          "visible": true
+        },
+        "frame:lidar_link": {
+          "visible": true
+        },
+        "frame:camera_link": {
+          "visible": true
+        },
+        "frame:imu_link": {
+          "visible": true
+        }
+      },
+      "topics": {
+        "/lidar/points": {
+          "visible": true,
+          "colorField": "z",
+          "colorMode": "colormap",
+          "colorMap": "turbo",
+          "pointSize": 3.0
+        },
+        "/scan": {
+          "visible": true,
+          "color": "#00ff00"
+        },
+        "/odom": {
+          "visible": true,
+          "color": "#0088ff"
+        },
+        "/odom/filtered": {
+          "visible": true,
+          "color": "#ffaa00"
+        },
+        "/robot_description": {
+          "visible": true
+        }
+      },
+      "publish": {
+        "type": "pose",
+        "poseTopic": "/goal_pose"
+      }
+    },
+    "Image!1": {
+      "cameraTopic": "/camera/image_raw",
+      "transformMarkers": false,
+      "synchronize": false
+    },
+    "Plot!1": {
+      "paths": [
+        {
+          "value": "/imu_raw.linear_acceleration.x",
+          "enabled": true,
+          "color": "#ff0055",
+          "label": "Acc X"
+        },
+        {
+          "value": "/imu_raw.linear_acceleration.y",
+          "enabled": true,
+          "color": "#00cc88",
+          "label": "Acc Y"
+        },
+        {
+          "value": "/imu_raw.linear_acceleration.z",
+          "enabled": true,
+          "color": "#0088ff",
+          "label": "Acc Z"
+        },
+        {
+          "value": "/imu_raw.angular_velocity.z",
+          "enabled": true,
+          "color": "#ffaa00",
+          "label": "Gyro Z (Yaw Rate)"
+        }
+      ],
+      "showXAxisLabels": true,
+      "showYAxisLabels": true,
+      "minYValue": -15,
+      "maxYValue": 15
+    },
+    "Teleop!1": {
+      "topic": "/cmd_vel",
+      "publishRate": 20,
+      "upButton": {
+        "linear": { "x": 0.4, "y": 0, "z": 0 },
+        "angular": { "x": 0, "y": 0, "z": 0 }
+      },
+      "downButton": {
+        "linear": { "x": -0.4, "y": 0, "z": 0 },
+        "angular": { "x": 0, "y": 0, "z": 0 }
+      },
+      "leftButton": {
+        "linear": { "x": 0, "y": 0, "z": 0 },
+        "angular": { "x": 0, "y": 0, "z": 0.8 }
+      },
+      "rightButton": {
+        "linear": { "x": 0, "y": 0, "z": 0 },
+        "angular": { "x": 0, "y": 0, "z": -0.8 }
+      }
+    }
+  },
+  "globalVariables": {},
+  "userNodes": {},
+  "playbackConfig": {
+    "speed": 1
+  },
+  "layout": {
+    "first": "3D!1",
+    "second": {
+      "first": "Image!1",
+      "second": {
+        "first": "Plot!1",
+        "second": "Teleop!1",
+        "direction": "column"
+      },
+      "direction": "column"
+    },
+    "direction": "row",
+    "splitPercentage": 65
+  }
+}

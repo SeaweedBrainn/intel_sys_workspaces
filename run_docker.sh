@@ -82,7 +82,7 @@ fi
 
 # 6. Execute inside the shared container
 if [ ${#PASSTHROUGH_ARGS[@]} -eq 0 ]; then
-    echo "🔌 Connected to shared container (intel-sys). Type 'exit' to leave shell."
+    echo "Connected to shared container (intel-sys). Type 'exit' to leave shell."
     docker compose exec intel-sys /ros_entrypoint_intel_sys.sh bash
 else
     docker compose exec intel-sys /ros_entrypoint_intel_sys.sh "${PASSTHROUGH_ARGS[@]}"

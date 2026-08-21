@@ -8,13 +8,10 @@ from launch_ros.actions import Node
 from launch_ros.substitutions import FindPackageShare
 
 def generate_launch_description():
-    bringup_pkg = FindPackageShare('intel_sys_bringup')
     hardware_pkg = FindPackageShare('intel_sys_hardware')
     desc_pkg = FindPackageShare('intel_sys_description')
     loc_pkg = FindPackageShare('intel_sys_localization')
     nav_pkg = FindPackageShare('intel_sys_navigation')
-
-    default_rviz_config = PathJoinSubstitution([bringup_pkg, 'rviz', 'nav2_default_view.rviz'])
 
     # Declare user arguments
     port_arg = DeclareLaunchArgument('port', default_value='/dev/rrc', description='STM32 serial port')
@@ -22,7 +19,8 @@ def generate_launch_description():
     use_ekf_arg = DeclareLaunchArgument('use_ekf', default_value='true', description='Run EKF sensor fusion')
     use_point_lio_arg = DeclareLaunchArgument('use_point_lio', default_value='false', description='Run Point-LIO LiDAR odometry')
     autostart_nav2_arg = DeclareLaunchArgument('autostart_nav2', default_value='true', description='Autostart Nav2 lifecycle')
-    use_rviz_arg = DeclareLaunchArgument('use_rviz', default_value='false', description='Launch RViz2 navigation interface')
+    use_foxglove_arg = DeclareLaunchArgument('use_foxglove', default_value='true', description='Launch Foxglove WebSocket bridge')
+    foxglove_port_arg = DeclareLaunchArgument('foxglove_port', default_value='8765', description='Foxglove WebSocket port')
 
     # 1. Robot Description (URDF and TF state publisher)
     description_launch = IncludeLaunchDescription(
@@ -58,14 +56,18 @@ def generate_launch_description():
         }.items()
     )
 
-    # 5. Optional RViz2 Visualizer
-    rviz_node = Node(
-        package='rviz2',
-        executable='rviz2',
-        name='rviz2',
+    # 5. Foxglove Studio WebSocket Bridge
+    foxglove_bridge_node = Node(
+        package='foxglove_bridge',
+        executable='foxglove_bridge',
+        name='foxglove_bridge',
         output='screen',
-        arguments=['-d', default_rviz_config],
-        condition=IfCondition(LaunchConfiguration('use_rviz'))
+        parameters=[{
+            'port': LaunchConfiguration('foxglove_port'),
+            'send_buffer_limit': 100000000,
+            'use_sim_time': False
+        }],
+        condition=IfCondition(LaunchConfiguration('use_foxglove'))
     )
 
     return LaunchDescription([
@@ -74,10 +76,11 @@ def generate_launch_description():
         use_ekf_arg,
         use_point_lio_arg,
         autostart_nav2_arg,
-        use_rviz_arg,
+        use_foxglove_arg,
+        foxglove_port_arg,
         description_launch,
         hardware_launch,
         localization_launch,
         navigation_launch,
-        rviz_node
+        foxglove_bridge_node
     ])

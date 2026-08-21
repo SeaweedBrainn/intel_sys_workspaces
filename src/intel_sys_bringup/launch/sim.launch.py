@@ -8,17 +8,14 @@ from launch_ros.actions import Node
 from launch_ros.substitutions import FindPackageShare
 
 def generate_launch_description():
-    bringup_pkg = FindPackageShare('intel_sys_bringup')
     sim_pkg = FindPackageShare('intel_sys_sim')
-    loc_pkg = FindPackageShare('intel_sys_localization')
     nav_pkg = FindPackageShare('intel_sys_navigation')
-
-    default_rviz_config = PathJoinSubstitution([bringup_pkg, 'rviz', 'nav2_default_view.rviz'])
 
     # Declare arguments
     headless_arg = DeclareLaunchArgument('headless', default_value='false', description='Run Gazebo without GUI')
-    use_rviz_arg = DeclareLaunchArgument('use_rviz', default_value='true', description='Launch RViz2 interface')
     use_nav_arg = DeclareLaunchArgument('use_nav', default_value='false', description='Launch Nav2 navigation stack in sim')
+    use_foxglove_arg = DeclareLaunchArgument('use_foxglove', default_value='true', description='Launch Foxglove WebSocket bridge')
+    foxglove_port_arg = DeclareLaunchArgument('foxglove_port', default_value='8765', description='Foxglove WebSocket port')
     x_arg = DeclareLaunchArgument('x', default_value='0.0', description='Spawn X position')
     y_arg = DeclareLaunchArgument('y', default_value='0.0', description='Spawn Y position')
     z_arg = DeclareLaunchArgument('z', default_value='0.05', description='Spawn Z position')
@@ -47,26 +44,30 @@ def generate_launch_description():
         condition=IfCondition(LaunchConfiguration('use_nav'))
     )
 
-    # 3. RViz2 Visualizer
-    rviz_node = Node(
-        package='rviz2',
-        executable='rviz2',
-        name='rviz2',
+    # 3. Foxglove Studio WebSocket Bridge
+    foxglove_bridge_node = Node(
+        package='foxglove_bridge',
+        executable='foxglove_bridge',
+        name='foxglove_bridge',
         output='screen',
-        arguments=['-d', default_rviz_config],
-        parameters=[{'use_sim_time': True}],
-        condition=IfCondition(LaunchConfiguration('use_rviz'))
+        parameters=[{
+            'port': LaunchConfiguration('foxglove_port'),
+            'send_buffer_limit': 100000000,
+            'use_sim_time': True
+        }],
+        condition=IfCondition(LaunchConfiguration('use_foxglove'))
     )
 
     return LaunchDescription([
         headless_arg,
-        use_rviz_arg,
         use_nav_arg,
+        use_foxglove_arg,
+        foxglove_port_arg,
         x_arg,
         y_arg,
         z_arg,
         yaw_arg,
         sim_launch,
         navigation_launch,
-        rviz_node
+        foxglove_bridge_node
     ])

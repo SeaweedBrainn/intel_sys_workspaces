@@ -348,7 +348,7 @@
       <always_on>true</always_on>
       <update_rate>10</update_rate>
       <pose relative_to="lidar_link">0 0 0 0 0 0</pose>
-      <topic>/unilidar/cloud</topic>
+      <topic>/lidar/points</topic>
       <gz_frame_id>lidar_link</gz_frame_id>
       <lidar>
         <scan>

@@ -1,7 +1,7 @@
 /**:
   ros__parameters:
     common:
-      lid_topic: "/unilidar/cloud"
+      lid_topic: "/lidar/points"
       imu_topic: "/imu_raw"
       con_frame: false
       con_frame_num: 1

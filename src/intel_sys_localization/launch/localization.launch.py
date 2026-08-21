@@ -50,7 +50,7 @@ def generate_launch_description():
         condition=IfCondition(use_point_lio),
         parameters=[default_point_lio_params],
         remappings=[
-            ('/unilidar/cloud', '/unilidar/cloud'),
+            ('/lidar/points', '/lidar/points'),
             ('/imu_raw', '/imu_raw'),
             ('/Odometry', '/point_lio/odom'),
         ]

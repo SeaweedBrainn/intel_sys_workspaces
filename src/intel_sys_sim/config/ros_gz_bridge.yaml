@@ -17,16 +17,16 @@
   gz_type_name: "gz.msgs.Odometry"
   direction: GZ_TO_ROS
 
-# 3D PointCloud from Unitree LiDAR
-- ros_topic_name: "/unilidar/cloud"
-  gz_topic_name: "/unilidar/cloud/points"
+# 3D PointCloud from LiDAR
+- ros_topic_name: "/lidar/points"
+  gz_topic_name: "/lidar/points/points"
   ros_type_name: "sensor_msgs/msg/PointCloud2"
   gz_type_name: "gz.msgs.PointCloudPacked"
   direction: GZ_TO_ROS
 
-# 2D LaserScan from Unitree LiDAR
+# 2D LaserScan from LiDAR
 - ros_topic_name: "/scan"
-  gz_topic_name: "/unilidar/cloud"
+  gz_topic_name: "/lidar/points"
   ros_type_name: "sensor_msgs/msg/LaserScan"
   gz_type_name: "gz.msgs.LaserScan"
   direction: GZ_TO_ROS

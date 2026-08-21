@@ -68,7 +68,7 @@ def generate_launch_description():
         ]
     )
 
-    # 4. ROS-Gazebo Bridge (Bridges /clock, /cmd_vel, /odom, /unilidar/cloud, /camera/..., /imu_raw, /joint_states)
+    # 4. ROS-Gazebo Bridge (Bridges /clock, /cmd_vel, /odom, /lidar/points, /scan, /camera/..., /imu_raw, /joint_states)
     ros_gz_bridge_node = Node(
         package='ros_gz_bridge',
         executable='parameter_bridge',

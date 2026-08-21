@@ -14,6 +14,10 @@ def generate_launch_description():
             output='screen',
             parameters=[{
                 'frame_id': LaunchConfiguration('frame_id'),
-            }]
+            }],
+            remappings=[
+                ('/unilidar/cloud', '/lidar/points'),
+                ('/unilidar/imu', '/lidar/imu'),
+            ]
         )
     ])

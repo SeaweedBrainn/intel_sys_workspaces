@@ -3,8 +3,8 @@
 import math
 import rclpy
 from rclpy.node import Node
-from nav_msgs.msg import Odometry
 from geometry_msgs.msg import Twist, TransformStamped, Quaternion
+from nav_msgs.msg import Odometry
 from tf2_ros import TransformBroadcaster
 from intel_sys_interfaces.msg import MotorsState
 
@@ -30,18 +30,15 @@ def yaw_to_quaternion(yaw: float) -> Quaternion:
     q = Quaternion()
     q.x = 0.0
     q.y = 0.0
-    q.z = math.sin(yaw * 0.5)
-    q.w = math.cos(yaw * 0.5)
+    q.z = math.sin(yaw / 2.0)
+    q.w = math.cos(yaw / 2.0)
     return q
 
 class MecanumOdometryIntegrator:
     def __init__(self, wheelbase=0.216, track_width=0.195, wheel_diameter=0.097):
-        self.wheelbase = wheelbase
-        self.track_width = track_width
-        self.wheel_diameter = wheel_diameter
-        self.half_base = (wheelbase + track_width) / 2.0
-        self.circumference = math.pi * wheel_diameter
-
+        self.L = wheelbase
+        self.W = track_width
+        self.r = wheel_diameter / 2.0
         self.x = 0.0
         self.y = 0.0
         self.yaw = 0.0
@@ -49,18 +46,16 @@ class MecanumOdometryIntegrator:
         self.vy = 0.0
         self.wz = 0.0
 
-    def rps_to_speed(self, rps: float) -> float:
-        return rps * self.circumference
-
     def forward_kinematics(self, rps1: float, rps2: float, rps3: float, rps4: float):
-        v1 = self.rps_to_speed(rps1)
-        v2 = self.rps_to_speed(rps2)
-        v3 = -self.rps_to_speed(rps3)
-        v4 = -self.rps_to_speed(rps4)
+        w1 = rps1 * 2.0 * math.pi
+        w2 = rps2 * 2.0 * math.pi
+        w3 = rps3 * 2.0 * math.pi
+        w4 = rps4 * 2.0 * math.pi
 
-        self.vx = (v1 + v2 + v3 + v4) / 4.0
-        self.vy = (-v1 + v2 + v3 - v4) / 4.0
-        self.wz = (-v1 - v2 + v3 + v4) / (4.0 * self.half_base)
+        k = (self.L + self.W) / 2.0
+        self.vx = (self.r / 4.0) * (w1 + w2 + w3 + w4)
+        self.vy = (self.r / 4.0) * (-w1 + w2 + w3 - w4)
+        self.wz = (self.r / (4.0 * k)) * (-w1 + w2 - w3 + w4)
         return self.vx, self.vy, self.wz
 
     def update_from_twist(self, vx: float, vy: float, wz: float):
@@ -79,12 +74,10 @@ class MecanumOdometryIntegrator:
         self.x += delta_x
         self.y += delta_y
         self.yaw += delta_yaw
-
-        # Normalize yaw to [-pi, pi]
         self.yaw = math.atan2(math.sin(self.yaw), math.cos(self.yaw))
         return self.x, self.y, self.yaw
 
-class OdomPublisherNode(Node):
+class OdometryPublisher(Node):
     def __init__(self):
         super().__init__('odom_publisher')
 
@@ -93,9 +86,9 @@ class OdomPublisherNode(Node):
         self.declare_parameter('wheel_diameter', 0.097)
         self.declare_parameter('odom_frame', 'odom')
         self.declare_parameter('base_frame', 'base_footprint')
-        self.declare_parameter('publish_tf', True)
+        self.declare_parameter('publish_tf', False)
         self.declare_parameter('odom_topic', 'odom')
-        self.declare_parameter('motor_topic', 'set_motor')
+        self.declare_parameter('motor_topic', 'ros_robot_controller/motors')
         self.declare_parameter('cmd_vel_topic', 'cmd_vel')
         self.declare_parameter('rate_hz', 50.0)
 
@@ -143,7 +136,6 @@ class OdomPublisherNode(Node):
         self.last_time = now
 
         if dt > 0.5:
-            # Skip huge dt jumps (e.g. after pause or pause on start)
             dt = 0.0
 
         x, y, yaw = self.integrator.integrate(dt)
@@ -183,7 +175,7 @@ class OdomPublisherNode(Node):
 
 def main(args=None):
     rclpy.init(args=args)
-    node = OdomPublisherNode()
+    node = OdometryPublisher()
     try:
         rclpy.spin(node)
     except KeyboardInterrupt:

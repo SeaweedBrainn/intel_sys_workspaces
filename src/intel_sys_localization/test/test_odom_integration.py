@@ -1,6 +1,6 @@
 import math
 import pytest
-from intel_sys_navigation.odom_publisher import MecanumOdometryIntegrator, yaw_to_quaternion
+from intel_sys_localization.odom_publisher import MecanumOdometryIntegrator, yaw_to_quaternion
 
 def test_yaw_to_quaternion():
     # Yaw = 0 -> identity orientation (0, 0, 0, 1)
@@ -57,11 +57,10 @@ def test_pure_rotation_odometry_integration():
 
 def test_forward_kinematics_wheel_speeds():
     integrator = MecanumOdometryIntegrator(wheelbase=0.216, track_width=0.195, wheel_diameter=0.097)
-    # All 4 wheels rotating at 1 RPS (positive speed forward)
-    # Note motor 3 and 4 are physically mirrored (negative RPS for forward motion)
-    vx, vy, wz = integrator.forward_kinematics(rps1=1.0, rps2=1.0, rps3=-1.0, rps4=-1.0)
+    # All 4 wheels rotating at 1 RPS forward
+    vx, vy, wz = integrator.forward_kinematics(rps1=1.0, rps2=1.0, rps3=1.0, rps4=1.0)
 
     expected_vx = 1.0 * (math.pi * 0.097)
-    assert pytest.approx(vx, rel=1e-3) == expected_vx
-    assert pytest.approx(vy, abs=1e-4) == 0.0
-    assert pytest.approx(wz, abs=1e-4) == 0.0
+    assert vx == pytest.approx(expected_vx, rel=1e-3)
+    assert vy == pytest.approx(0.0, abs=1e-4)
+    assert wz == pytest.approx(0.0, abs=1e-4)

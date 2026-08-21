@@ -12,6 +12,7 @@
   <depend>intel_sys_interfaces</depend>
   <depend>intel_sys_hardware</depend>
   <depend>intel_sys_description</depend>
+  <depend>intel_sys_localization</depend>
   <depend>intel_sys_navigation</depend>
   <depend>intel_sys_sim</depend>
   <depend>teleop_twist_keyboard</depend>

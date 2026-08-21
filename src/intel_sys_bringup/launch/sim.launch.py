@@ -10,6 +10,7 @@ from launch_ros.substitutions import FindPackageShare
 def generate_launch_description():
     bringup_pkg = FindPackageShare('intel_sys_bringup')
     sim_pkg = FindPackageShare('intel_sys_sim')
+    loc_pkg = FindPackageShare('intel_sys_localization')
     nav_pkg = FindPackageShare('intel_sys_navigation')
 
     default_rviz_config = PathJoinSubstitution([bringup_pkg, 'rviz', 'nav2_default_view.rviz'])
@@ -17,6 +18,7 @@ def generate_launch_description():
     # Declare arguments
     headless_arg = DeclareLaunchArgument('headless', default_value='false', description='Run Gazebo without GUI')
     use_rviz_arg = DeclareLaunchArgument('use_rviz', default_value='true', description='Launch RViz2 interface')
+    use_nav_arg = DeclareLaunchArgument('use_nav', default_value='false', description='Launch Nav2 navigation stack in sim')
     x_arg = DeclareLaunchArgument('x', default_value='0.0', description='Spawn X position')
     y_arg = DeclareLaunchArgument('y', default_value='0.0', description='Spawn Y position')
     z_arg = DeclareLaunchArgument('z', default_value='0.05', description='Spawn Z position')
@@ -35,16 +37,15 @@ def generate_launch_description():
         }.items()
     )
 
-    # 2. Navigation (Temporarily commented out per request)
-    # navigation_launch = IncludeLaunchDescription(
-    #     PythonLaunchDescriptionSource(PathJoinSubstitution([nav_pkg, 'launch', 'navigation.launch.py'])),
-    #     launch_arguments={
-    #         'use_sim_time': 'true',
-    #         'use_ekf': 'true',
-    #         'use_point_lio': 'false',
-    #         'autostart': 'true',
-    #     }.items()
-    # )
+    # 2. Navigation (Toggled via use_nav argument)
+    navigation_launch = IncludeLaunchDescription(
+        PythonLaunchDescriptionSource(PathJoinSubstitution([nav_pkg, 'launch', 'navigation.launch.py'])),
+        launch_arguments={
+            'use_sim_time': 'true',
+            'autostart': 'true',
+        }.items(),
+        condition=IfCondition(LaunchConfiguration('use_nav'))
+    )
 
     # 3. RViz2 Visualizer
     rviz_node = Node(
@@ -60,11 +61,12 @@ def generate_launch_description():
     return LaunchDescription([
         headless_arg,
         use_rviz_arg,
+        use_nav_arg,
         x_arg,
         y_arg,
         z_arg,
         yaw_arg,
         sim_launch,
-        # navigation_launch,
+        navigation_launch,
         rviz_node
     ])

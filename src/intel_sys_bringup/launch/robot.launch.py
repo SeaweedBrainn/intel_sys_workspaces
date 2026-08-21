@@ -1,6 +1,6 @@
 import os
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription, GroupAction
+from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription
 from launch.conditions import IfCondition
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration, PathJoinSubstitution
@@ -11,6 +11,7 @@ def generate_launch_description():
     bringup_pkg = FindPackageShare('intel_sys_bringup')
     hardware_pkg = FindPackageShare('intel_sys_hardware')
     desc_pkg = FindPackageShare('intel_sys_description')
+    loc_pkg = FindPackageShare('intel_sys_localization')
     nav_pkg = FindPackageShare('intel_sys_navigation')
 
     default_rviz_config = PathJoinSubstitution([bringup_pkg, 'rviz', 'nav2_default_view.rviz'])
@@ -38,18 +39,26 @@ def generate_launch_description():
         }.items()
     )
 
-    # 3. Navigation Stack (Odometry, EKF, Point-LIO, Nav2)
-    navigation_launch = IncludeLaunchDescription(
-        PythonLaunchDescriptionSource(PathJoinSubstitution([nav_pkg, 'launch', 'navigation.launch.py'])),
+    # 3. State Estimation & Localization (Odometry, EKF, Point-LIO)
+    localization_launch = IncludeLaunchDescription(
+        PythonLaunchDescriptionSource(PathJoinSubstitution([loc_pkg, 'launch', 'localization.launch.py'])),
         launch_arguments={
             'use_sim_time': 'false',
             'use_ekf': LaunchConfiguration('use_ekf'),
             'use_point_lio': LaunchConfiguration('use_point_lio'),
+        }.items()
+    )
+
+    # 4. Autonomous Navigation Stack (Nav2)
+    navigation_launch = IncludeLaunchDescription(
+        PythonLaunchDescriptionSource(PathJoinSubstitution([nav_pkg, 'launch', 'navigation.launch.py'])),
+        launch_arguments={
+            'use_sim_time': 'false',
             'autostart': LaunchConfiguration('autostart_nav2'),
         }.items()
     )
 
-    # 4. Optional RViz2 Visualizer
+    # 5. Optional RViz2 Visualizer
     rviz_node = Node(
         package='rviz2',
         executable='rviz2',
@@ -68,6 +77,7 @@ def generate_launch_description():
         use_rviz_arg,
         description_launch,
         hardware_launch,
+        localization_launch,
         navigation_launch,
         rviz_node
     ])

@@ -14,8 +14,6 @@ def generate_launch_description():
 
     # Declare arguments
     headless_arg = DeclareLaunchArgument('headless', default_value='false', description='Run Gazebo without GUI')
-    use_ekf_arg = DeclareLaunchArgument('use_ekf', default_value='true', description='Run EKF sensor fusion in sim')
-    use_nav_arg = DeclareLaunchArgument('use_nav', default_value='false', description='Launch Nav2 navigation stack in sim')
     use_foxglove_arg = DeclareLaunchArgument('use_foxglove', default_value='true', description='Launch Foxglove WebSocket bridge')
     foxglove_port_arg = DeclareLaunchArgument('foxglove_port', default_value='8765', description='Foxglove WebSocket port')
     x_arg = DeclareLaunchArgument('x', default_value='0.0', description='Spawn X position')
@@ -45,14 +43,13 @@ def generate_launch_description():
         }.items()
     )
 
-    # 3. Navigation (Toggled via use_nav argument)
+    # 3. Navigation Stack (Nav2)
     navigation_launch = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(PathJoinSubstitution([nav_pkg, 'launch', 'navigation.launch.py'])),
         launch_arguments={
             'use_sim_time': 'true',
             'autostart': 'true',
-        }.items(),
-        condition=IfCondition(LaunchConfiguration('use_nav'))
+        }.items()
     )
 
     # 4. Foxglove Studio WebSocket Bridge
@@ -71,8 +68,6 @@ def generate_launch_description():
 
     return LaunchDescription([
         headless_arg,
-        use_ekf_arg,
-        use_nav_arg,
         use_foxglove_arg,
         foxglove_port_arg,
         x_arg,
@@ -81,6 +76,6 @@ def generate_launch_description():
         yaw_arg,
         sim_launch,
         localization_launch,
-        # navigation_launch,
+        navigation_launch,
         foxglove_bridge_node
     ])

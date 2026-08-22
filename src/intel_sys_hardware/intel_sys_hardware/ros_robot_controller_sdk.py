@@ -101,8 +101,10 @@ class Board:
         self.port.open()
 
         self.state = PacketControllerState.PACKET_CONTROLLER_STATE_STARTBYTE1
+        self.serial_write_lock = threading.Lock()
         self.servo_read_lock = threading.Lock()
         self.pwm_servo_read_lock = threading.Lock()
+        self.is_closed = False
 
         self.sys_queue = queue.Queue(maxsize=1)
         self.bus_servo_queue = queue.Queue(maxsize=1)
@@ -171,10 +173,10 @@ class Board:
         if self.enable_recv:
             try:
                 data = self.sys_queue.get(block=False)
-                if data[0] == 0x04:
-                    return struct.unpack('<H', data[1:])[0]
+                if len(data) >= 3 and data[0] == 0x04:
+                    return struct.unpack('<H', data[1:3])[0]
                 return None
-            except queue.Empty:
+            except (queue.Empty, struct.error):
                 return None
         return None
 
@@ -182,28 +184,36 @@ class Board:
         if self.enable_recv:
             try:
                 data = self.key_queue.get(block=False)
-                key_id = data[0]
-                key_event = PacketReportKeyEvents(data[1])
-                if key_event == PacketReportKeyEvents.KEY_EVENT_CLICK:
-                    return key_id, 0
-                elif key_event == PacketReportKeyEvents.KEY_EVENT_PRESSED:
-                    return key_id, 1
-            except queue.Empty:
+                if len(data) >= 2:
+                    key_id = data[0]
+                    key_event = PacketReportKeyEvents(data[1])
+                    if key_event == PacketReportKeyEvents.KEY_EVENT_CLICK:
+                        return key_id, 0
+                    elif key_event == PacketReportKeyEvents.KEY_EVENT_PRESSED:
+                        return key_id, 1
+                return None
+            except (queue.Empty, ValueError):
                 return None
         return None
 
     def get_imu(self):
         if self.enable_recv:
             try:
-                return struct.unpack('<6f', self.imu_queue.get(block=False))
-            except queue.Empty:
+                data = self.imu_queue.get(block=False)
+                if len(data) == 24:
+                    return struct.unpack('<6f', data)
+                return None
+            except (queue.Empty, struct.error):
                 return None
         return None
 
     def get_gamepad(self):
         if self.enable_recv:
             try:
-                gamepad_data = struct.unpack("<HB4b", self.gamepad_queue.get(block=False))
+                data = self.gamepad_queue.get(block=False)
+                if len(data) < 7:
+                    return None
+                gamepad_data = struct.unpack("<HB4b", data[:7])
                 axes = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
                 buttons = [0] * 16
                 for b in self.buttons_map:
@@ -231,7 +241,7 @@ class Board:
                 if gamepad_data[1] == 11: axes[7] = -1.0
                 elif gamepad_data[1] == 15: axes[7] = 1.0
                 return axes, buttons
-            except queue.Empty:
+            except (queue.Empty, struct.error):
                 return None
         return None
 
@@ -239,8 +249,10 @@ class Board:
         if self.enable_recv:
             try:
                 sbus_data = self.sbus_queue.get(block=False)
+                if len(sbus_data) < 36:
+                    return None
                 status = SBusStatus()
-                *status.channels, ch17, ch18, sig_loss, fail_safe = struct.unpack("<16hBBBB", sbus_data)
+                *status.channels, ch17, ch18, sig_loss, fail_safe = struct.unpack("<16hBBBB", sbus_data[:36])
                 data = []
                 if sig_loss != 0:
                     data = [0.5] * 16
@@ -249,7 +261,7 @@ class Board:
                     for i in status.channels:
                         data.append(2*(i - 192)/(1792 - 192) - 1)
                 return data
-            except queue.Empty:
+            except (queue.Empty, struct.error):
                 return None
         return None
 
@@ -258,7 +270,9 @@ class Board:
         buf.append(len(data))
         buf.extend(data)
         buf.append(checksum_crc8(bytes(buf[2:])))
-        self.port.write(buf)
+        with self.serial_write_lock:
+            if not self.is_closed and self.port.is_open:
+                self.port.write(buf)
 
     def set_led(self, on_time, off_time, repeat=1, led_id=1):
         on_time = int(on_time * 1000)
@@ -292,12 +306,20 @@ class Board:
         data = struct.pack("<BBb", 0x07, servo_id, int(offset))
         self.buf_write(PacketFunction.PACKET_FUNC_PWM_SERVO, data)
 
-    def pwm_servo_read_and_unpack(self, servo_id, cmd, unpack):
-        with self.servo_read_lock:
+    def pwm_servo_read_and_unpack(self, servo_id, cmd, unpack, timeout=0.1):
+        with self.pwm_servo_read_lock:
+            while not self.pwm_servo_queue.empty():
+                try:
+                    self.pwm_servo_queue.get_nowait()
+                except queue.Empty:
+                    break
             self.buf_write(PacketFunction.PACKET_FUNC_PWM_SERVO, [cmd, servo_id])
-            data = self.pwm_servo_queue.get(block=True)
-            servo_id, cmd, info = struct.unpack(unpack, data)
-            return info
+            try:
+                data = self.pwm_servo_queue.get(block=True, timeout=timeout)
+                servo_id, cmd, info = struct.unpack(unpack, data)
+                return info
+            except (queue.Empty, struct.error):
+                return None
 
     def pwm_servo_read_offset(self, servo_id):
         return self.pwm_servo_read_and_unpack(servo_id, 0x09, "<BBb")
@@ -352,13 +374,22 @@ class Board:
             data.extend(struct.pack("<BH", i[0], i[1]))
         self.buf_write(PacketFunction.PACKET_FUNC_BUS_SERVO, data)
 
-    def bus_servo_read_and_unpack(self, servo_id, cmd, unpack):
+    def bus_servo_read_and_unpack(self, servo_id, cmd, unpack, timeout=0.1):
         with self.servo_read_lock:
+            while not self.bus_servo_queue.empty():
+                try:
+                    self.bus_servo_queue.get_nowait()
+                except queue.Empty:
+                    break
             self.buf_write(PacketFunction.PACKET_FUNC_BUS_SERVO, [cmd, servo_id])
-            data = self.bus_servo_queue.get(block=True)
-            servo_id, cmd, success, *info = struct.unpack(unpack, data)
-            if success == 0:
-                return info
+            try:
+                data = self.bus_servo_queue.get(block=True, timeout=timeout)
+                servo_id, cmd, success, *info = struct.unpack(unpack, data)
+                if success == 0:
+                    return info
+                return None
+            except (queue.Empty, struct.error):
+                return None
 
     def bus_servo_read_id(self, servo_id=254): return self.bus_servo_read_and_unpack(servo_id, 0x12, "<BBbB")
     def bus_servo_read_offset(self, servo_id): return self.bus_servo_read_and_unpack(servo_id, 0x22, "<BBbb")
@@ -373,10 +404,23 @@ class Board:
     def enable_reception(self, enable=True):
         self.enable_recv = enable
 
+    def close(self):
+        self.is_closed = True
+        self.enable_recv = False
+        with self.serial_write_lock:
+            try:
+                if self.port.is_open:
+                    self.port.close()
+            except Exception:
+                pass
+
     def recv_task(self):
-        while True:
+        while not self.is_closed:
             if self.enable_recv:
-                recv_data = self.port.read()
+                try:
+                    recv_data = self.port.read()
+                except Exception:
+                    break
                 if recv_data:
                     for dat in recv_data:
                         if self.state == PacketControllerState.PACKET_CONTROLLER_STATE_STARTBYTE1:

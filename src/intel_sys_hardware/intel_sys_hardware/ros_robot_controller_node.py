@@ -254,6 +254,10 @@ class RosRobotControllerNode(Node):
             self.board.set_motor_speed([[mid, 0] for mid in self.motor_ids])
         except Exception:
             pass
+        try:
+            self.board.close()
+        except Exception:
+            pass
         super().destroy_node()
 
 def main(args=None):

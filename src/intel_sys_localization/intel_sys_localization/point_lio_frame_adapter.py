@@ -244,27 +244,30 @@ class PointLioFrameAdapter(Node):
         # Transform points from camera_init into odom using dynamic 6-DOF mount pose
         if self.tf_calibrated and len(msg.data) > 0:
             try:
-                # Build numpy dtype from message fields
-                fields_dict = {f.name: (DTYPE_MAP[f.datatype], f.offset) for f in msg.fields if f.datatype in DTYPE_MAP}
+                fields_dict = {f.name: (DTYPE_MAP.get(f.datatype, np.float32), f.offset) for f in msg.fields}
                 if 'x' in fields_dict and 'y' in fields_dict and 'z' in fields_dict:
-                    itemsize = msg.point_step
-                    arr = np.frombuffer(msg.data, dtype=np.uint8).reshape(-1, itemsize)
-                    
-                    x = np.frombuffer(arr[:, fields_dict['x'][1]:fields_dict['x'][1]+4].tobytes(), dtype=np.float32)
-                    y = np.frombuffer(arr[:, fields_dict['y'][1]:fields_dict['y'][1]+4].tobytes(), dtype=np.float32)
-                    z = np.frombuffer(arr[:, fields_dict['z'][1]:fields_dict['z'][1]+4].tobytes(), dtype=np.float32)
-                    
-                    xyz = np.column_stack([x, y, z])
-                    xyz_trans = (self.mount_R @ xyz.T).T + self.mount_T
+                    dtype_view = np.dtype({
+                        'names': ['x', 'y', 'z'],
+                        'formats': [fields_dict['x'][0], fields_dict['y'][0], fields_dict['z'][0]],
+                        'offsets': [fields_dict['x'][1], fields_dict['y'][1], fields_dict['z'][1]],
+                        'itemsize': msg.point_step
+                    })
+                    arr = np.frombuffer(msg.data, dtype=dtype_view)
+                    if len(arr) > 0:
+                        x = arr['x'].astype(np.float32)
+                        y = arr['y'].astype(np.float32)
+                        z = arr['z'].astype(np.float32)
+                        xyz = np.column_stack([x, y, z])
+                        xyz_trans = (self.mount_R @ xyz.T).T + self.mount_T
 
-                    # Overwrite transformed xyz back into data buffer
-                    arr_copy = arr.copy()
-                    arr_copy[:, fields_dict['x'][1]:fields_dict['x'][1]+4] = np.frombuffer(xyz_trans[:, 0].astype(np.float32).tobytes(), dtype=np.uint8).reshape(-1, 4)
-                    arr_copy[:, fields_dict['y'][1]:fields_dict['y'][1]+4] = np.frombuffer(xyz_trans[:, 1].astype(np.float32).tobytes(), dtype=np.uint8).reshape(-1, 4)
-                    arr_copy[:, fields_dict['z'][1]:fields_dict['z'][1]+4] = np.frombuffer(xyz_trans[:, 2].astype(np.float32).tobytes(), dtype=np.uint8).reshape(-1, 4)
-                    msg.data = arr_copy.tobytes()
-            except Exception:
-                pass
+                        data_arr = np.frombuffer(msg.data, dtype=np.uint8).copy()
+                        view_mut = np.ndarray(buffer=data_arr, dtype=dtype_view, shape=(len(arr),))
+                        view_mut['x'] = xyz_trans[:, 0]
+                        view_mut['y'] = xyz_trans[:, 1]
+                        view_mut['z'] = xyz_trans[:, 2]
+                        msg.data = data_arr.tobytes()
+            except Exception as e:
+                self.get_logger().warn(f'Failed to transform point cloud frame: {e}', throttle_duration_sec=5.0)
 
         msg.header.frame_id = self.odom_frame
         self.cloud_pub.publish(msg)

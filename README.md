@@ -16,8 +16,8 @@ intel_sys_workspaces/
 │   ├── intel_sys_interfaces/   # Custom STM32 message and service definitions
 │   ├── intel_sys_hardware/     # STM32 bridge, mecanum controller, raw wheel odom publisher & sensor drivers
 │   ├── intel_sys_description/  # Unified robot URDF/Xacro, 3D meshes & state publisher
-│   ├── intel_sys_localization/ # Pure sensor fusion: robot_localization EKF & Point-LIO 3D LiDAR odometry
-│   ├── intel_sys_navigation/   # Nav2 stack configuration, costmaps & autonomous path planning
+│   ├── intel_sys_localization/ # Point-LIO 3D LiDAR-inertial odometry & frame adapter
+│   ├── intel_sys_navigation/   # Nav2 stack configuration with STVL 3D costmaps & path planning
 │   ├── intel_sys_sim/          # Gazebo Harmonic simulation, worlds, and ros_gz_bridge
 │   └── intel_sys_bringup/      # Top-level system coordinators and Foxglove Studio dashboard
 ├── run_docker.sh               # Universal runner (auto-detects Desktop x86_64 vs Jetson ARM64)
@@ -34,8 +34,8 @@ intel_sys_workspaces/
 | **`intel_sys_interfaces`** | `ament_cmake` | 15 custom ROS 2 messages (`MotorsState`, `MotorState`, `LedState`, `BuzzerState`, `ButtonState`, `Sbus`, `OLEDState`, `BusServoState`, `PWMServoState`) and 2 services. |
 | **`intel_sys_hardware`** | `ament_python` | STM32 serial driver bridge (`stm32_bridge`), inverse mecanum velocity controller (`mecanum_controller`), raw wheel odometry publisher (`odom_publisher`), sensor launchers, and udev rules. |
 | **`intel_sys_description`** | `ament_cmake` | Unified `robot.urdf.xacro`, chassis and mecanum wheel STL meshes, Gazebo `MecanumDrive` and sensor plugins, and one-click `view_robot.launch.py`. |
-| **`intel_sys_localization`** | `ament_python` | Decoupled `robot_localization` EKF multi-sensor fusion, Unitree L2 Point-LIO 3D LiDAR odometry, and configuration files. |
-| **`intel_sys_navigation`** | `ament_cmake` | Nav2 omnidirectional navigation stack (DWB controller, NavFn planner, global/local costmaps, behavior trees). |
+| **`intel_sys_localization`** | `ament_python` | Point-LIO 3D LiDAR-inertial odometry, dynamic REP-105 URDF frame adapter, and robot body bounding box filter. |
+| **`intel_sys_navigation`** | `ament_cmake` | Nav2 omnidirectional navigation stack with Spatio-Temporal Voxel Layer (STVL 3D costmaps) and DWB controller. |
 | **`intel_sys_sim`** | `ament_cmake` | Gazebo Harmonic simulation environment (`default.sdf`), model spawner, and `ros_gz_bridge` configuration. |
 | **`intel_sys_bringup`** | `ament_cmake` | Top-level system coordinators: `robot.launch.py`, `sim.launch.py`, `teleop.launch.py`, and `foxglove_layout.json`. |
 
@@ -43,7 +43,7 @@ intel_sys_workspaces/
 
 ## Quick Start with `run_docker.sh`
 
-[`run_docker.sh`](file:///c:/Users/aahil/Documents/Coding/Robotics/intel_sys_workspaces/run_docker.sh) auto-detects whether you are running on an **x86_64 PC/WSL** or an **ARM64 NVIDIA Jetson Orin NX** and manages a shared multi-terminal container:
+[`run_docker.sh`](run_docker.sh) auto-detects whether you are running on an **x86_64 PC/WSL** or an **ARM64 NVIDIA Jetson Orin NX** and manages a shared multi-terminal container:
 
 ```bash
 # 1. Start or attach to the shared container shell (auto-detects NVIDIA RTX GPU on Desktop / Tegra on Jetson):
@@ -81,28 +81,19 @@ sudo ./install_udev_rules.sh
 
 ### 1. Launch the Physical Robot (Master Command)
 
-Starts the entire stack (robot description + STM32 bridge + sensors + localization EKF + Nav2 + Foxglove WebSocket Bridge):
+Starts the entire stack (robot description + STM32 bridge + sensors + Point-LIO localization + Nav2 with STVL 3D costmaps + Foxglove WebSocket Bridge):
 
 ```bash
 ./run_docker.sh ros2 launch intel_sys_bringup robot.launch.py
 ```
 
-#### Common Arguments:
-```bash
-# Enable Point-LIO 3D LiDAR odometry in EKF fusion:
-./run_docker.sh ros2 launch intel_sys_bringup robot.launch.py use_point_lio:=true
-```
+### 2. Launch 3D Simulation (Gazebo Harmonic + Nav2 + Foxglove Bridge)
 
-### 2. Launch 3D Simulation (Gazebo Harmonic + Foxglove Bridge)
-
-Spins up the Gazebo obstacle world, spawns the robot model with Mecanum drive physics, and starts the Foxglove WebSocket bridge:
+Spins up the Gazebo obstacle world, spawns the robot model with Mecanum drive physics, runs Point-LIO localization, starts Nav2 autonomous planning, and launches the Foxglove WebSocket bridge:
 
 ```bash
 # Simulation with Gazebo GUI + Foxglove WebSocket bridge:
 ./run_docker.sh ros2 launch intel_sys_bringup sim.launch.py
-
-# Launch simulation with autonomous Nav2 planning enabled:
-./run_docker.sh ros2 launch intel_sys_bringup sim.launch.py use_nav:=true
 
 # Headless Simulation (for CI / automated testing):
 ./run_docker.sh ros2 launch intel_sys_bringup sim.launch.py headless:=true
@@ -142,7 +133,7 @@ The workspace uses **Foxglove Studio** for high-performance, cross-platform tele
    *(or `ws://<jetson-ip>:8765` when running remotely on real robot)*
 3. Import the pre-configured layout:
    * In Foxglove Studio, go to **Layout** $\to$ **Import from file...**
-   * Select [`src/intel_sys_bringup/config/foxglove_layout.json`](file:///c:/Users/aahil/Documents/Coding/Robotics/intel_sys_workspaces/src/intel_sys_bringup/config/foxglove_layout.json).
+   * Select [`src/intel_sys_bringup/config/foxglove_layout.json`](src/intel_sys_bringup/config/foxglove_layout.json).
    * This dashboard opens a 3D scene (`/lidar/points`, `/robot_description`, `/odom`, TF tree), real-time camera stream (`/camera/image_raw`), live IMU acceleration/gyro plots, and teleoperation controls.
 
 ---

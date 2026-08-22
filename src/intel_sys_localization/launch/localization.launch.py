@@ -9,16 +9,13 @@ from launch_ros.substitutions import FindPackageShare
 def generate_launch_description():
     pkg_share = FindPackageShare('intel_sys_localization')
 
-    default_ekf_params = PathJoinSubstitution([pkg_share, 'config', 'ekf.yaml'])
     default_point_lio_params = PathJoinSubstitution([pkg_share, 'config', 'point_lio.yaml'])
 
     # Declare arguments
     use_sim_time_arg = DeclareLaunchArgument('use_sim_time', default_value='false', description='Use simulation clock')
-    use_ekf_arg = DeclareLaunchArgument('use_ekf', default_value='true', description='Use EKF fusion (odom + point_lio)')
     lidar_type_arg = DeclareLaunchArgument('lidar_type', default_value='5', description='Point-LIO LiDAR Type (2: VELO16, 5: UNILIDAR)')
 
     use_sim_time = LaunchConfiguration('use_sim_time')
-    use_ekf = LaunchConfiguration('use_ekf')
     lidar_type = LaunchConfiguration('lidar_type')
 
     # 0. LiDAR Body Filter Node (crops points inside robot bounding box for both Sim and Real)

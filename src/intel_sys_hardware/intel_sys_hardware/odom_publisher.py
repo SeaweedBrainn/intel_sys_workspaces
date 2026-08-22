@@ -67,9 +67,10 @@ class MecanumOdometryIntegrator:
         if dt <= 0.0:
             return self.x, self.y, self.yaw
 
-        delta_x = (self.vx * math.cos(self.yaw) - self.vy * math.sin(self.yaw)) * dt
-        delta_y = (self.vx * math.sin(self.yaw) + self.vy * math.cos(self.yaw)) * dt
         delta_yaw = self.wz * dt
+        mid_yaw = self.yaw + delta_yaw / 2.0
+        delta_x = (self.vx * math.cos(mid_yaw) - self.vy * math.sin(mid_yaw)) * dt
+        delta_y = (self.vx * math.sin(mid_yaw) + self.vy * math.cos(mid_yaw)) * dt
 
         self.x += delta_x
         self.y += delta_y
@@ -113,6 +114,8 @@ class OdometryPublisher(Node):
         self.create_subscription(MotorsState, motor_topic, self.motor_callback, 10)
         self.create_subscription(Twist, cmd_vel_topic, self.cmd_vel_callback, 10)
 
+        self.last_motor_time = None
+        self.last_cmd_vel_time = None
         self.last_time = self.get_clock().now()
         self.timer = self.create_timer(1.0 / rate_hz, self.update_and_publish)
 
@@ -122,14 +125,18 @@ class OdometryPublisher(Node):
 
     def motor_callback(self, msg: MotorsState):
         if len(msg.data) >= 4:
+            self.last_motor_time = self.get_clock().now()
             # Motors 3 and 4 have inverted physical polarity in hardware protocol
             self.integrator.forward_kinematics(
                 msg.data[0].rps, msg.data[1].rps, -msg.data[2].rps, -msg.data[3].rps
             )
 
     def cmd_vel_callback(self, msg: Twist):
-        # Fallback if motor speeds are not streaming
-        self.integrator.update_from_twist(msg.linear.x, msg.linear.y, msg.angular.z)
+        now = self.get_clock().now()
+        self.last_cmd_vel_time = now
+        # Fallback only if motor speeds are not streaming (> 200ms)
+        if self.last_motor_time is None or (now - self.last_motor_time).nanoseconds > 2e8:
+            self.integrator.update_from_twist(msg.linear.x, msg.linear.y, msg.angular.z)
 
     def update_and_publish(self):
         now = self.get_clock().now()
@@ -138,6 +145,11 @@ class OdometryPublisher(Node):
 
         if dt > 0.5:
             dt = 0.0
+
+        # If relying on fallback cmd_vel and commands have stopped for > 200ms, decay to zero
+        if self.last_motor_time is None or (now - self.last_motor_time).nanoseconds > 2e8:
+            if self.last_cmd_vel_time is not None and (now - self.last_cmd_vel_time).nanoseconds > 2e8:
+                self.integrator.update_from_twist(0.0, 0.0, 0.0)
 
         x, y, yaw = self.integrator.integrate(dt)
         q = yaw_to_quaternion(yaw)

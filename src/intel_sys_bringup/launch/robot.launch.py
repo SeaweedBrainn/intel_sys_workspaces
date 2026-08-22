@@ -16,7 +16,6 @@ def generate_launch_description():
     # Declare user arguments
     port_arg = DeclareLaunchArgument('port', default_value='/dev/rrc', description='STM32 serial port')
     baudrate_arg = DeclareLaunchArgument('baudrate', default_value='1000000', description='Serial baudrate')
-    use_ekf_arg = DeclareLaunchArgument('use_ekf', default_value='true', description='Run EKF sensor fusion')
     autostart_nav2_arg = DeclareLaunchArgument('autostart_nav2', default_value='true', description='Autostart Nav2 lifecycle')
     use_foxglove_arg = DeclareLaunchArgument('use_foxglove', default_value='true', description='Launch Foxglove WebSocket bridge')
     foxglove_port_arg = DeclareLaunchArgument('foxglove_port', default_value='8765', description='Foxglove WebSocket port')
@@ -71,7 +70,6 @@ def generate_launch_description():
     return LaunchDescription([
         port_arg,
         baudrate_arg,
-        use_ekf_arg,
         autostart_nav2_arg,
         use_foxglove_arg,
         foxglove_port_arg,

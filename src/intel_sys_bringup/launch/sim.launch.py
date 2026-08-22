@@ -15,7 +15,6 @@ def generate_launch_description():
     # Declare arguments
     headless_arg = DeclareLaunchArgument('headless', default_value='false', description='Run Gazebo without GUI')
     use_ekf_arg = DeclareLaunchArgument('use_ekf', default_value='true', description='Run EKF sensor fusion in sim')
-    use_point_lio_arg = DeclareLaunchArgument('use_point_lio', default_value='false', description='Run Point-LIO LiDAR odometry in sim')
     use_nav_arg = DeclareLaunchArgument('use_nav', default_value='false', description='Launch Nav2 navigation stack in sim')
     use_foxglove_arg = DeclareLaunchArgument('use_foxglove', default_value='true', description='Launch Foxglove WebSocket bridge')
     foxglove_port_arg = DeclareLaunchArgument('foxglove_port', default_value='8765', description='Foxglove WebSocket port')
@@ -37,13 +36,12 @@ def generate_launch_description():
         }.items()
     )
 
-    # 2. State Estimation & Localization (EKF & Point-LIO in simulation)
+    # 2. State Estimation & Localization (Point-LIO LiDAR-Inertial Odometry)
     localization_launch = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(PathJoinSubstitution([loc_pkg, 'launch', 'localization.launch.py'])),
         launch_arguments={
             'use_sim_time': 'true',
-            'use_ekf': LaunchConfiguration('use_ekf'),
-            'use_point_lio': LaunchConfiguration('use_point_lio'),
+            'lidar_type': '5',
         }.items()
     )
 
@@ -74,7 +72,6 @@ def generate_launch_description():
     return LaunchDescription([
         headless_arg,
         use_ekf_arg,
-        use_point_lio_arg,
         use_nav_arg,
         use_foxglove_arg,
         foxglove_port_arg,

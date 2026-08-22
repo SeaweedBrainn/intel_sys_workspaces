@@ -87,7 +87,7 @@ class OdometryPublisher(Node):
         self.declare_parameter('odom_frame', 'odom')
         self.declare_parameter('base_frame', 'base_footprint')
         self.declare_parameter('publish_tf', False)
-        self.declare_parameter('odom_topic', 'odom')
+        self.declare_parameter('odom_topic', '/odom/wheel')
         self.declare_parameter('motor_topic', 'set_motor')
         self.declare_parameter('cmd_vel_topic', 'cmd_vel')
         self.declare_parameter('rate_hz', 50.0)

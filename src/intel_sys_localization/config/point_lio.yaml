@@ -1,8 +1,17 @@
 /**:
   ros__parameters:
+    use_imu_as_input: true       # 250Hz High-Rate IMU Odometry Propagation
+    prop_at_freq_of_imu: true
+    init_map_size: 10
+    point_filter_num: 1
+    space_down_sample: true
+    filter_size_surf: 0.1        # 0.1m voxel grid (preserves ground & wall planes)
+    filter_size_map: 0.1
+    cube_side_length: 1000.0
+
     common:
       lid_topic: "/lidar/points"
-      imu_topic: "/imu_raw"
+      imu_topic: "/lidar/imu"
       con_frame: false
       con_frame_num: 1
       cut_frame: false
@@ -10,15 +19,15 @@
       time_lag_imu_to_lidar: 0.0
 
     preprocess:
-      lidar_type: 5              # Unitree L2 LiDAR
+      lidar_type: 5              # 5: UNILIDAR (Unitree L2)
       scan_line: 18
       timestamp_unit: 0
-      blind: 0.1
+      blind: 0.1                 # Min blind distance (body filter handles chassis)
 
     mapping:
       imu_en: true
       extrinsic_est_en: false
-      imu_time_inte: 0.01        # 100Hz STM32 IMU
+      imu_time_inte: 0.004       # 250Hz Unitree L2 Internal IMU
       satu_acc: 30.0
       satu_gyro: 35.0
       acc_norm: 9.81
@@ -34,16 +43,16 @@
       plane_thr: 0.1
       match_s: 81.0
       fov_degree: 180.0
-      det_range: 25.0
+      det_range: 100.0
       gravity_align: true
       gravity: [0.0, 0.0, -9.810]
       gravity_init: [0.0, 0.0, -9.810]
 
-      # Extrinsic transform from IMU to LiDAR
-      extrinsic_T: [0.0959, 0.0, 0.0417]
-      extrinsic_R: [1.0, 0.0, 0.0,
-                    0.0, 1.0, 0.0,
-                    0.0, 0.0, 1.0]
+      # Official Unitree L2 internal factory extrinsics (LiDAR to Internal IMU)
+      extrinsic_T: [0.007698, 0.014655, -0.00667]
+      extrinsic_R: [ 1.0, 0.0, 0.0,
+                     0.0, 1.0, 0.0,
+                     0.0, 0.0, 1.0 ]
 
     odometry:
       publish_odometry_without_downsample: true

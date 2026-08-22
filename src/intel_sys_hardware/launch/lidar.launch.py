@@ -16,7 +16,7 @@ def generate_launch_description():
                 'frame_id': LaunchConfiguration('frame_id'),
             }],
             remappings=[
-                ('/unilidar/cloud', '/lidar/points'),
+                ('/unilidar/cloud', '/lidar/points_raw'),
                 ('/unilidar/imu', '/lidar/imu'),
             ]
         )

@@ -68,7 +68,7 @@ def generate_launch_description():
         ]
     )
 
-    # 4. ROS-Gazebo Bridge (Bridges /clock, /cmd_vel, /odom, /lidar/points, /scan, /camera/..., /imu_raw, /joint_states)
+    # 4. ROS-Gazebo Bridge (Bridges /clock, /cmd_vel, /odom, /lidar/points_raw, /scan, /camera/..., /imu_raw, /joint_states)
     ros_gz_bridge_node = Node(
         package='ros_gz_bridge',
         executable='parameter_bridge',
@@ -76,6 +76,20 @@ def generate_launch_description():
         output='screen',
         parameters=[{
             'config_file': default_bridge_config,
+            'use_sim_time': use_sim_time
+        }]
+    )
+
+    # 5. Simulation LiDAR Per-Point Timestamp Synthesizer (for Point-LIO / SLAM)
+    sim_lidar_time_adapter_node = Node(
+        package='intel_sys_sim',
+        executable='sim_lidar_time_adapter',
+        name='sim_lidar_time_adapter',
+        output='screen',
+        parameters=[{
+            'input_topic': '/lidar/points_sim',
+            'output_topic': '/lidar/points_raw',
+            'scan_period': 0.1,
             'use_sim_time': use_sim_time
         }]
     )
@@ -93,5 +107,6 @@ def generate_launch_description():
         gz_sim,
         robot_description_launch,
         spawn_robot,
-        ros_gz_bridge_node
+        ros_gz_bridge_node,
+        sim_lidar_time_adapter_node
     ])

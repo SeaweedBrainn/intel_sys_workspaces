@@ -37,7 +37,7 @@ def generate_launch_description():
         name='odom_publisher',
         output='screen',
         parameters=[{
-            'odom_topic': 'odom',
+            'odom_topic': '/odom/wheel',
             'motor_topic': 'set_motor',
             'cmd_vel_topic': 'cmd_vel',
             'publish_tf': False,

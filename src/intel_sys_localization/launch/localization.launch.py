@@ -15,42 +15,78 @@ def generate_launch_description():
     # Declare arguments
     use_sim_time_arg = DeclareLaunchArgument('use_sim_time', default_value='false', description='Use simulation clock')
     use_ekf_arg = DeclareLaunchArgument('use_ekf', default_value='true', description='Use EKF fusion (odom + point_lio)')
-    use_point_lio_arg = DeclareLaunchArgument('use_point_lio', default_value='false', description='Run Point-LIO LiDAR odometry')
+    lidar_type_arg = DeclareLaunchArgument('lidar_type', default_value='5', description='Point-LIO LiDAR Type (2: VELO16, 5: UNILIDAR)')
 
     use_sim_time = LaunchConfiguration('use_sim_time')
     use_ekf = LaunchConfiguration('use_ekf')
-    use_point_lio = LaunchConfiguration('use_point_lio')
+    lidar_type = LaunchConfiguration('lidar_type')
 
-    # 1. Point-LIO LiDAR-Inertial Odometry Node (publishes /point_lio/odom)
+    # 0. LiDAR Body Filter Node (crops points inside robot bounding box for both Sim and Real)
+    lidar_body_filter_node = Node(
+        package='intel_sys_localization',
+        executable='lidar_body_filter',
+        name='lidar_body_filter',
+        output='screen',
+        parameters=[{
+            'use_sim_time': use_sim_time,
+            'input_topic': '/lidar/points_raw',
+            'output_topic': '/lidar/points',
+            'min_x': -0.30,
+            'max_x': 0.08,
+            'min_y': -0.18,
+            'max_y': 0.18,
+            'min_z': -0.20,
+            'max_z': 0.12,
+        }]
+    )
+
+    # 1. Point-LIO LiDAR-Inertial Odometry Node (publishes raw topics with legacy frames)
     point_lio_node = Node(
         package='point_lio',
         executable='pointlio_mapping',
         name='point_lio',
         output='screen',
-        condition=IfCondition(use_point_lio),
-        parameters=[default_point_lio_params],
+        parameters=[
+            default_point_lio_params,
+            {
+                'use_sim_time': use_sim_time,
+                'preprocess.lidar_type': lidar_type
+            }
+        ],
         remappings=[
             ('/lidar/points', '/lidar/points'),
-            ('/imu_raw', '/imu_raw'),
-            ('/Odometry', '/point_lio/odom'),
+            ('/lidar/imu', '/lidar/imu'),
+            ('/aft_mapped_to_init', '/point_lio/raw_odom'),
+            ('/cloud_registered', '/point_lio/raw_cloud_registered'),
+            ('/path', '/point_lio/raw_path'),
         ]
     )
 
-    # 2. Robot Localization (EKF) Node (fuses /odom + /imu_raw + /point_lio/odom -> publishes /odom/filtered and odom -> base_footprint TF)
-    ekf_node = Node(
-        package='robot_localization',
-        executable='ekf_node',
-        name='ekf_filter_node',
+    # 2. Point-LIO Frame Adapter Node (publishes standard /odom, /point_lio/odom and odom -> base_footprint TF)
+    point_lio_frame_adapter_node = Node(
+        package='intel_sys_localization',
+        executable='point_lio_frame_adapter',
+        name='point_lio_frame_adapter',
         output='screen',
-        condition=IfCondition(use_ekf),
-        parameters=[default_ekf_params, {'use_sim_time': use_sim_time}],
-        remappings=[('odometry/filtered', 'odom/filtered')]
+        parameters=[{
+            'use_sim_time': use_sim_time,
+            'odom_frame': 'odom',
+            'base_frame': 'base_footprint',
+            'child_frame': 'lidar_link',
+            'publish_tf': True,
+            'raw_odom_topic': '/point_lio/raw_odom',
+            'odom_topic': '/odom',
+            'raw_cloud_topic': '/point_lio/raw_cloud_registered',
+            'cloud_topic': '/point_lio/cloud_registered',
+            'raw_path_topic': '/point_lio/raw_path',
+            'path_topic': '/point_lio/path',
+        }]
     )
 
     return LaunchDescription([
         use_sim_time_arg,
-        use_ekf_arg,
-        use_point_lio_arg,
+        lidar_type_arg,
+        lidar_body_filter_node,
         point_lio_node,
-        ekf_node
+        point_lio_frame_adapter_node
     ])

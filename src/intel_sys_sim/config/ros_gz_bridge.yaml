@@ -11,14 +11,15 @@
   gz_type_name: "ignition.msgs.Twist"
   direction: ROS_TO_GZ
 
-- ros_topic_name: "/odom"
+# Wheel Odometry from Simulation
+- ros_topic_name: "/odom/wheel"
   gz_topic_name: "/odom"
   ros_type_name: "nav_msgs/msg/Odometry"
   gz_type_name: "ignition.msgs.Odometry"
   direction: GZ_TO_ROS
 
-# 3D PointCloud from LiDAR
-- ros_topic_name: "/lidar/points"
+# 3D PointCloud from LiDAR (Sim Raw)
+- ros_topic_name: "/lidar/points_sim"
   gz_topic_name: "/lidar/points/points"
   ros_type_name: "sensor_msgs/msg/PointCloud2"
   gz_type_name: "ignition.msgs.PointCloudPacked"
@@ -51,6 +52,13 @@
 
 - ros_topic_name: "/imu_raw"
   gz_topic_name: "/imu_raw"
+  ros_type_name: "sensor_msgs/msg/Imu"
+  gz_type_name: "ignition.msgs.IMU"
+  direction: GZ_TO_ROS
+
+# 3D LiDAR Internal IMU
+- ros_topic_name: "/lidar/imu"
+  gz_topic_name: "/lidar/imu"
   ros_type_name: "sensor_msgs/msg/Imu"
   gz_type_name: "ignition.msgs.IMU"
   direction: GZ_TO_ROS

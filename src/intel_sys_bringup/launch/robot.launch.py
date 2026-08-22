@@ -17,7 +17,6 @@ def generate_launch_description():
     port_arg = DeclareLaunchArgument('port', default_value='/dev/rrc', description='STM32 serial port')
     baudrate_arg = DeclareLaunchArgument('baudrate', default_value='1000000', description='Serial baudrate')
     use_ekf_arg = DeclareLaunchArgument('use_ekf', default_value='true', description='Run EKF sensor fusion')
-    use_point_lio_arg = DeclareLaunchArgument('use_point_lio', default_value='false', description='Run Point-LIO LiDAR odometry')
     autostart_nav2_arg = DeclareLaunchArgument('autostart_nav2', default_value='true', description='Autostart Nav2 lifecycle')
     use_foxglove_arg = DeclareLaunchArgument('use_foxglove', default_value='true', description='Launch Foxglove WebSocket bridge')
     foxglove_port_arg = DeclareLaunchArgument('foxglove_port', default_value='8765', description='Foxglove WebSocket port')
@@ -37,13 +36,12 @@ def generate_launch_description():
         }.items()
     )
 
-    # 3. State Estimation & Localization (Odometry, EKF, Point-LIO)
+    # 3. State Estimation & Localization (Point-LIO LiDAR-Inertial Odometry)
     localization_launch = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(PathJoinSubstitution([loc_pkg, 'launch', 'localization.launch.py'])),
         launch_arguments={
             'use_sim_time': 'false',
-            'use_ekf': LaunchConfiguration('use_ekf'),
-            'use_point_lio': LaunchConfiguration('use_point_lio'),
+            'lidar_type': '5',
         }.items()
     )
 
@@ -74,7 +72,6 @@ def generate_launch_description():
         port_arg,
         baudrate_arg,
         use_ekf_arg,
-        use_point_lio_arg,
         autostart_nav2_arg,
         use_foxglove_arg,
         foxglove_port_arg,

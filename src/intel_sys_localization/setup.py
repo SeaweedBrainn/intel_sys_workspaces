@@ -23,6 +23,8 @@ setup(
     tests_require=['pytest'],
     entry_points={
         'console_scripts': [
+            'lidar_body_filter = intel_sys_localization.lidar_body_filter:main',
+            'point_lio_frame_adapter = intel_sys_localization.point_lio_frame_adapter:main',
         ],
     },
 )

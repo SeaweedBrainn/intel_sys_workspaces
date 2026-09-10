@@ -1,10 +1,21 @@
 ARG TARGETARCH
 
 FROM nvcr.io/nvidia/l4t-jetpack:r36.4.0 AS base-arm64
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl gnupg software-properties-common locales \
+ && locale-gen en_US en_US.UTF-8 \
+ && update-locale LC_ALL=en_US.UTF-8 LANG=en_US.UTF-8 \
+ && add-apt-repository universe \
+ && curl -sSL https://raw.githubusercontent.com/ros/rosdistro/master/ros.key -o /usr/share/keyrings/ros-archive-keyring.gpg \
+ && echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/ros-archive-keyring.gpg] http://packages.ros.org/ros2/ubuntu jammy main" > /etc/apt/sources.list.d/ros2.list \
+ && apt-get update && apt-get install -y --no-install-recommends \
+    ros-humble-ros-base \
+ && rm -rf /var/lib/apt/lists/*
+
 FROM osrf/ros:humble-desktop AS base-amd64
 FROM base-${TARGETARCH} AS base
 
-ENV DEBIAN_FRONTEND=noninteractive ROS_DISTRO=humble
+ENV DEBIAN_FRONTEND=noninteractive ROS_DISTRO=humble LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential cmake curl git python3-colcon-common-extensions \
@@ -34,6 +45,7 @@ COPY third_party/ /opt/intel_sys/third_party-manifest/
 RUN apt-get update \
  && mkdir -p /opt/intel_sys/deps/src \
  && vcs import /opt/intel_sys/deps/src < /opt/intel_sys/third_party-manifest/robot.repos \
+ && (rosdep init 2>/dev/null || true) \
  && rosdep update \
  && rosdep install --from-paths /opt/intel_sys/deps/src/point_lio_ros2 \
       /opt/intel_sys/deps/src/unilidar_sdk2/unitree_lidar_ros2/src/unitree_lidar_ros2 \

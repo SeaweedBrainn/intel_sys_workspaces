@@ -6,8 +6,7 @@ services:
       args:
         TARGETARCH: ${TARGETARCH:-amd64}
     image: intel-sys:${TARGETARCH:-amd64}
-    ports:
-      - "8765:8765"
+    network_mode: host
     ipc: host
     privileged: true
     environment:
@@ -17,7 +16,7 @@ services:
       - ./:/workspaces/intel_sys
       - /tmp/.X11-unix:/tmp/.X11-unix
       - /run/udev:/run/udev:ro
-      - /dev/bus/usb:/dev/bus/usb
+      - /dev:/dev
     stdin_open: true
     tty: true
     runtime: ${DOCKER_RUNTIME:-runc}

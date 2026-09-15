@@ -34,3 +34,29 @@ def test_motor_speed_payload_encoding():
     assert len(data) == 22
     assert data[0] == 0x01
     assert data[1] == 4
+
+def test_gamepad_unpack_bytes_and_list():
+    from unittest.mock import MagicMock
+    from intel_sys_hardware.ros_robot_controller_sdk import Board
+    board = Board.__new__(Board)
+    import queue
+    board.enable_recv = True
+    board.gamepad_queue = queue.Queue()
+    board.buttons_map = Board.buttons_map
+
+    # Test with raw bytes
+    raw_bytes = struct.pack("<HB4b", 0, 0, 0, 0, 0, 0)
+    board.gamepad_queue.put(raw_bytes)
+    res = board.get_gamepad()
+    assert res is not None
+    axes, buttons = res
+    assert len(axes) == 8
+    assert len(buttons) == 16
+
+    # Test with list of ints (regression test)
+    raw_list = list(raw_bytes)
+    board.gamepad_queue.put(raw_list)
+    res2 = board.get_gamepad()
+    assert res2 is not None
+    axes2, buttons2 = res2
+    assert len(axes2) == 8

@@ -173,6 +173,10 @@ class Board:
         if self.enable_recv:
             try:
                 data = self.sys_queue.get(block=False)
+                if data is None:
+                    return None
+                if isinstance(data, list):
+                    data = bytes(data)
                 if len(data) >= 3 and data[0] == 0x04:
                     return struct.unpack('<H', data[1:3])[0]
                 return None
@@ -184,6 +188,10 @@ class Board:
         if self.enable_recv:
             try:
                 data = self.key_queue.get(block=False)
+                if data is None:
+                    return None
+                if isinstance(data, list):
+                    data = bytes(data)
                 if len(data) >= 2:
                     key_id = data[0]
                     key_event = PacketReportKeyEvents(data[1])
@@ -200,6 +208,10 @@ class Board:
         if self.enable_recv:
             try:
                 data = self.imu_queue.get(block=False)
+                if data is None:
+                    return None
+                if isinstance(data, list):
+                    data = bytes(data)
                 if len(data) == 24:
                     return struct.unpack('<6f', data)
                 return None
@@ -211,6 +223,10 @@ class Board:
         if self.enable_recv:
             try:
                 data = self.gamepad_queue.get(block=False)
+                if data is None:
+                    return None
+                if isinstance(data, list):
+                    data = bytes(data)
                 if len(data) < 7:
                     return None
                 gamepad_data = struct.unpack("<HB4b", data[:7])
@@ -249,6 +265,10 @@ class Board:
         if self.enable_recv:
             try:
                 sbus_data = self.sbus_queue.get(block=False)
+                if sbus_data is None:
+                    return None
+                if isinstance(sbus_data, list):
+                    sbus_data = bytes(sbus_data)
                 if len(sbus_data) < 36:
                     return None
                 status = SBusStatus()
@@ -316,6 +336,10 @@ class Board:
             self.buf_write(PacketFunction.PACKET_FUNC_PWM_SERVO, [cmd, servo_id])
             try:
                 data = self.pwm_servo_queue.get(block=True, timeout=timeout)
+                if data is None:
+                    return None
+                if isinstance(data, list):
+                    data = bytes(data)
                 servo_id, cmd, info = struct.unpack(unpack, data)
                 return info
             except (queue.Empty, struct.error):
@@ -384,6 +408,10 @@ class Board:
             self.buf_write(PacketFunction.PACKET_FUNC_BUS_SERVO, [cmd, servo_id])
             try:
                 data = self.bus_servo_queue.get(block=True, timeout=timeout)
+                if data is None:
+                    return None
+                if isinstance(data, list):
+                    data = bytes(data)
                 servo_id, cmd, success, *info = struct.unpack(unpack, data)
                 if success == 0:
                     return info
@@ -460,7 +488,7 @@ class Board:
                             if crc8 == dat:
                                 func = PacketFunction(self.frame[0])
                                 if func in self.parsers:
-                                    self.parsers[func](self.frame[2:])
+                                    self.parsers[func](bytes(self.frame[2:]))
                             self.state = PacketControllerState.PACKET_CONTROLLER_STATE_STARTBYTE1
             else:
                 time.sleep(0.01)

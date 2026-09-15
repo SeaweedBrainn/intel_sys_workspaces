@@ -1,8 +1,10 @@
 ARG TARGETARCH
 
 FROM nvcr.io/nvidia/l4t-jetpack:r36.4.0 AS base-arm64
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    curl gnupg software-properties-common locales \
+ENV DEBIAN_FRONTEND=noninteractive TZ=Etc/UTC
+RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone \
+ && apt-get update && apt-get install -y --no-install-recommends \
+    tzdata curl gnupg software-properties-common locales \
  && locale-gen en_US en_US.UTF-8 \
  && update-locale LC_ALL=en_US.UTF-8 LANG=en_US.UTF-8 \
  && add-apt-repository universe \

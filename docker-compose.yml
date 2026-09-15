@@ -5,6 +5,7 @@ services:
       context: .
       args:
         TARGETARCH: ${TARGETARCH:-amd64}
+      network: host
     image: intel-sys:${TARGETARCH:-amd64}
     network_mode: host
     ipc: host

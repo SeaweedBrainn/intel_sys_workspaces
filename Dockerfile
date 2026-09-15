@@ -34,7 +34,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
  && rm -rf /var/lib/apt/lists/*
 
 RUN install -d -m 0755 /etc/apt/keyrings \
- && curl -fsSL --output /tmp/librealsenseai.asc https://librealsense.realsenseai.com/Debian/librealsenseai.asc \
+ && curl -fsSL --retry 3 --retry-delay 2 --output /tmp/librealsenseai.asc https://librealsense.realsenseai.com/Debian/librealsenseai.asc \
  && gpg --batch --yes --dearmor --output /etc/apt/keyrings/librealsenseai.gpg /tmp/librealsenseai.asc \
  && rm -f /tmp/librealsenseai.asc \
  && echo "deb [signed-by=/etc/apt/keyrings/librealsenseai.gpg] https://librealsense.realsenseai.com/Debian/apt-repo jammy main" > /etc/apt/sources.list.d/librealsense.list \

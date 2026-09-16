@@ -1,0 +1,72 @@
+# syntax=docker/dockerfile:1.4
+FROM osrf/ros:humble-desktop AS base
+
+ENV DEBIAN_FRONTEND=noninteractive \
+    ROS_DISTRO=humble \
+    LANG=en_US.UTF-8 \
+    LC_ALL=en_US.UTF-8
+
+# Base development tools, ROS packages, and Gazebo simulation (x86_64 Desktop)
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
+    apt-get update && apt-get install -y --no-install-recommends \
+    build-essential cmake curl git python3-colcon-common-extensions \
+    python3-rosdep python3-vcstool python3-serial python3-pip python3-tqdm \
+    ros-dev-tools gnupg software-properties-common ccache \
+    ros-humble-pcl-conversions ros-humble-pcl-ros \
+    ros-humble-robot-state-publisher ros-humble-joint-state-publisher ros-humble-xacro \
+    ros-humble-navigation2 ros-humble-nav2-bringup ros-humble-spatio-temporal-voxel-layer \
+    ros-humble-teleop-twist-keyboard ros-humble-teleop-twist-joy ros-humble-joy \
+    ros-humble-cv-bridge ros-humble-image-transport \
+    ros-humble-ros-gz ros-humble-pointcloud-to-laserscan \
+    ros-humble-foxglove-bridge ros-humble-rviz2 \
+    libeigen3-dev libpcl-dev mesa-utils pciutils
+
+# Librealsense apt repository and packages
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
+    install -d -m 0755 /etc/apt/keyrings \
+ && curl -fsSL --retry 3 --retry-delay 2 --output /tmp/librealsenseai.asc https://librealsense.realsenseai.com/Debian/librealsenseai.asc \
+ && gpg --batch --yes --dearmor --output /etc/apt/keyrings/librealsenseai.gpg /tmp/librealsenseai.asc \
+ && rm -f /tmp/librealsenseai.asc \
+ && echo "deb [signed-by=/etc/apt/keyrings/librealsenseai.gpg] https://librealsense.realsenseai.com/Debian/apt-repo jammy main" > /etc/apt/sources.list.d/librealsense.list \
+ && apt-get update \
+ && apt-get install -y --no-install-recommends librealsense2-dev librealsense2-utils
+
+FROM base AS third-party-builder
+ENV CCACHE_DIR=/root/.cache/ccache \
+    CCACHE_MAXSIZE=2G
+
+# Copy ONLY the manifest file so edits in other third_party files don't bust cache
+COPY third_party/robot.repos /opt/intel_sys/third_party-manifest/robot.repos
+
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
+    --mount=type=cache,target=/root/.cache/ccache \
+    apt-get update \
+ && mkdir -p /opt/intel_sys/deps/src \
+ && vcs import /opt/intel_sys/deps/src < /opt/intel_sys/third_party-manifest/robot.repos \
+ && (rosdep init 2>/dev/null || true) \
+ && rosdep update \
+ && rosdep install --from-paths /opt/intel_sys/deps/src/point_lio_ros2 \
+      /opt/intel_sys/deps/src/unilidar_sdk2/unitree_lidar_ros2/src/unitree_lidar_ros2 \
+      /opt/intel_sys/deps/src/realsense-ros --ignore-src --rosdistro ${ROS_DISTRO} \
+      --skip-keys pcl --skip-keys librealsense2 --skip-keys launch_pytest --skip-keys launch-pytest -y \
+ && . /opt/ros/${ROS_DISTRO}/setup.sh \
+ && colcon build --merge-install --base-paths /opt/intel_sys/deps/src/point_lio_ros2 \
+      /opt/intel_sys/deps/src/unilidar_sdk2/unitree_lidar_ros2/src/unitree_lidar_ros2 \
+      /opt/intel_sys/deps/src/realsense-ros --install-base /opt/intel_sys/third_party \
+      --cmake-args -DCMAKE_BUILD_TYPE=Release \
+                   -DCMAKE_C_COMPILER_LAUNCHER=ccache \
+                   -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
+
+FROM base AS development
+COPY --from=third-party-builder /opt/intel_sys/third_party /opt/intel_sys/third_party
+COPY docker/entrypoint.sh /ros_entrypoint_intel_sys.sh
+RUN chmod +x /ros_entrypoint_intel_sys.sh \
+ && echo "source /ros_entrypoint_intel_sys.sh" >> /etc/bash.bashrc \
+ && echo "source /ros_entrypoint_intel_sys.sh" >> /root/.bashrc
+
+WORKDIR /workspaces/intel_sys
+ENTRYPOINT ["/ros_entrypoint_intel_sys.sh"]
+CMD ["bash"]

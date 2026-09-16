@@ -1,23 +1,44 @@
+x-common-config: &common-config
+  network_mode: host
+  ipc: host
+  privileged: true
+  environment:
+    - DISPLAY=${DISPLAY:-}
+    - ROS_DOMAIN_ID=${ROS_DOMAIN_ID:-0}
+  volumes:
+    - ./:/workspaces/intel_sys
+    - /tmp/.X11-unix:/tmp/.X11-unix
+    - /run/udev:/run/udev:ro
+    - /dev:/dev
+  stdin_open: true
+  tty: true
+  runtime: ${DOCKER_RUNTIME:-runc}
+
 services:
+  intel-sys-sim:
+    <<: *common-config
+    container_name: intel-sys-sim
+    build:
+      context: .
+      dockerfile: Dockerfile.sim
+      network: host
+    image: intel-sys-sim:latest
+
+  intel-sys-rover:
+    <<: *common-config
+    container_name: intel-sys-rover
+    build:
+      context: .
+      dockerfile: Dockerfile.rover
+      network: host
+    image: intel-sys-rover:latest
+
+  # Backwards compatibility alias
   intel-sys:
+    <<: *common-config
     container_name: intel-sys
     build:
       context: .
-      args:
-        TARGETARCH: ${TARGETARCH:-amd64}
+      dockerfile: ${DOCKERFILE:-Dockerfile.sim}
       network: host
-    image: intel-sys:${TARGETARCH:-amd64}
-    network_mode: host
-    ipc: host
-    privileged: true
-    environment:
-      - DISPLAY=${DISPLAY:-}
-      - ROS_DOMAIN_ID=${ROS_DOMAIN_ID:-0}
-    volumes:
-      - ./:/workspaces/intel_sys
-      - /tmp/.X11-unix:/tmp/.X11-unix
-      - /run/udev:/run/udev:ro
-      - /dev:/dev
-    stdin_open: true
-    tty: true
-    runtime: ${DOCKER_RUNTIME:-runc}
+    image: intel-sys:latest

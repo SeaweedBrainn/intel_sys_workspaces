@@ -5,23 +5,33 @@ set -e
 # Guarantees that multiple terminal sessions connect to the same shared container.
 #
 # Usage:
-#   ./run_docker.sh              # Start or attach to the shared container shell
+#   ./run_docker.sh              # Start or attach to the container (auto-detects sim or rover)
+#   ./run_docker.sh --sim        # Force simulation container (intel-sys-sim)
+#   ./run_docker.sh --rover      # Force rover hardware container (intel-sys-rover)
 #   ./run_docker.sh --build      # Rebuild image and restart shared container
-#   ./run_docker.sh --down       # Stop and remove the shared container
-#   ./run_docker.sh <cmd>        # Run a command inside the shared container (e.g. ./run_docker.sh colcon test)
+#   ./run_docker.sh --down       # Stop and remove running containers
+#   ./run_docker.sh <cmd>        # Run a command inside the container (e.g. ./run_docker.sh colcon test)
 
 SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 cd "$SCRIPT_DIR"
+
+export DOCKER_BUILDKIT=1
 
 REBUILD=false
 STOP_CONTAINER=false
 PASSTHROUGH_ARGS=()
 ENABLE_NVIDIA=auto
-FORCED_ARCH=""
+TARGET_MODE=""
 
 # 1. Parse arguments
 for arg in "$@"; do
     case "$arg" in
+        --sim)
+            TARGET_MODE="sim"
+            ;;
+        --rover)
+            TARGET_MODE="rover"
+            ;;
         --build|-b)
             REBUILD=true
             ;;
@@ -34,30 +44,32 @@ for arg in "$@"; do
         --cpu)
             ENABLE_NVIDIA=false
             ;;
-        --jetson)
-            FORCED_ARCH="arm64"
-            ;;
-        --desktop)
-            FORCED_ARCH="amd64"
-            ;;
         *)
             PASSTHROUGH_ARGS+=("$arg")
             ;;
     esac
 done
 
-# 2. Hardware Architecture & GPU Auto-Detection
-ARCH=${FORCED_ARCH:-$(uname -m)}
-if [ "$ARCH" = "aarch64" ] || [ "$ARCH" = "arm64" ]; then
-    export TARGETARCH=arm64
+# 2. Hardware Architecture & Default Target Auto-Detection
+HOST_ARCH=$(uname -m)
+if [ -z "$TARGET_MODE" ]; then
+    if [ "$HOST_ARCH" = "aarch64" ] || [ "$HOST_ARCH" = "arm64" ]; then
+        TARGET_MODE="rover"
+    else
+        TARGET_MODE="sim"
+    fi
+fi
+
+if [ "$TARGET_MODE" = "rover" ]; then
+    SERVICE="intel-sys-rover"
     export DOCKER_RUNTIME=${DOCKER_RUNTIME:-nvidia}
     export COMPOSE_FILE="docker-compose.yml:docker-compose.nvidia.yml"
-    PLATFORM_NAME="NVIDIA Jetson (ARM64 with GPU runtime)"
+    PLATFORM_NAME="Rover Hardware [Jetson ARM64]"
 else
-    export TARGETARCH=amd64
+    SERVICE="intel-sys-sim"
     export DOCKER_RUNTIME=${DOCKER_RUNTIME:-runc}
 
-    # Auto-detect NVIDIA GPU availability on x86_64 Desktop/WSL
+    # Auto-detect NVIDIA GPU availability on x86_64 Desktop/WSL for Gazebo
     HAS_NVIDIA=false
     if [ "$ENABLE_NVIDIA" = "true" ]; then
         HAS_NVIDIA=true
@@ -69,52 +81,52 @@ else
 
     if [ "$HAS_NVIDIA" = "true" ]; then
         export COMPOSE_FILE="docker-compose.yml:docker-compose.nvidia.yml"
-        PLATFORM_NAME="Desktop/WSL (x86_64 with NVIDIA GPU acceleration)"
+        PLATFORM_NAME="Simulation [x86_64 with NVIDIA GPU acceleration]"
     else
         export COMPOSE_FILE="docker-compose.yml"
-        PLATFORM_NAME="Desktop/WSL (x86_64 standard CPU)"
+        PLATFORM_NAME="Simulation [x86_64 standard CPU]"
     fi
 fi
 
-# 3. Stop container if requested
+# 3. Stop containers if requested
 if [ "$STOP_CONTAINER" = true ]; then
-    echo "Stopping intel-sys container..."
+    echo "Stopping all intel-sys containers..."
     docker compose down
     exit 0
 fi
 
-# 3. Allow X11 GUI forwarding for Gazebo if display is available
+# 4. Allow X11 GUI forwarding for Gazebo/RViz if display is available
 if [ -n "$DISPLAY" ]; then
     xhost +local:docker 2>/dev/null || true
 fi
 
-# 4. Rebuild if requested
+# 5. Rebuild if requested
 if [ "$REBUILD" = true ]; then
-    echo "Building Docker image (intel-sys) for ${PLATFORM_NAME}..."
+    echo "Building Docker image (${SERVICE}) for ${PLATFORM_NAME}..."
     docker compose down 2>/dev/null || true
-    docker compose build intel-sys
+    docker compose build "$SERVICE"
 fi
 
-# 5. Ensure the shared background container is running
-RUNNING=$(docker inspect -f '{{.State.Running}}' intel-sys 2>/dev/null || echo "false")
+# 6. Ensure the shared background container is running
+RUNNING=$(docker inspect -f '{{.State.Running}}' "$SERVICE" 2>/dev/null || echo "false")
 
 if [ "$RUNNING" != "true" ]; then
-    echo "Starting shared intel-sys container on ${PLATFORM_NAME}..."
-    docker compose up -d intel-sys
+    echo "Starting ${SERVICE} container on ${PLATFORM_NAME}..."
+    docker compose up -d "$SERVICE"
 fi
 
-# 6. Execute inside the shared container with interactive TTY support
+# 7. Execute inside the shared container with interactive TTY support
 if [ ${#PASSTHROUGH_ARGS[@]} -eq 0 ]; then
-    echo "Connected to shared container (intel-sys). Type 'exit' to leave shell."
+    echo "Connected to ${SERVICE} (${PLATFORM_NAME}). Type 'exit' to leave shell."
     if [ -t 0 ]; then
-        docker exec -it intel-sys bash
+        docker exec -it "$SERVICE" bash
     else
-        docker exec -i intel-sys bash
+        docker exec -i "$SERVICE" bash
     fi
 else
     if [ -t 0 ]; then
-        docker exec -it intel-sys /ros_entrypoint_intel_sys.sh "${PASSTHROUGH_ARGS[@]}"
+        docker exec -it "$SERVICE" /ros_entrypoint_intel_sys.sh "${PASSTHROUGH_ARGS[@]}"
     else
-        docker exec -i intel-sys /ros_entrypoint_intel_sys.sh "${PASSTHROUGH_ARGS[@]}"
+        docker exec -i "$SERVICE" /ros_entrypoint_intel_sys.sh "${PASSTHROUGH_ARGS[@]}"
     fi
 fi

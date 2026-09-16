@@ -1,12 +1,19 @@
+x-nvidia-gpu: &nvidia-gpu
+  environment:
+    - NVIDIA_VISIBLE_DEVICES=all
+    - NVIDIA_DRIVER_CAPABILITIES=all,graphics,display,utility,compute
+  deploy:
+    resources:
+      reservations:
+        devices:
+          - driver: nvidia
+            count: all
+            capabilities: [gpu]
+
 services:
   intel-sys:
-    environment:
-      - NVIDIA_VISIBLE_DEVICES=all
-      - NVIDIA_DRIVER_CAPABILITIES=all,graphics,display,utility,compute
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: all
-              capabilities: [gpu]
+    <<: *nvidia-gpu
+  intel-sys-sim:
+    <<: *nvidia-gpu
+  intel-sys-rover:
+    <<: *nvidia-gpu

@@ -213,9 +213,24 @@
     </visual>
   </link>
   <joint name="lidar_joint" type="fixed">
-    <origin xyz="0.0959 0.0 0.1284" rpy="0 0 0"/>
+    <origin xyz="0.0959 0.0 0.1284" rpy="0 1.5708 0"/>
     <parent link="base_link"/>
     <child link="lidar_link"/>
+  </joint>
+
+  <!-- Unitree Driver Hardware Frame Aliases (connects vendor frames to standard ROS tree) -->
+  <link name="unilidar_lidar"/>
+  <joint name="unilidar_lidar_alias_joint" type="fixed">
+    <origin xyz="0 0 0" rpy="0 0 0"/>
+    <parent link="lidar_link"/>
+    <child link="unilidar_lidar"/>
+  </joint>
+
+  <link name="unilidar_imu"/>
+  <joint name="unilidar_imu_alias_joint" type="fixed">
+    <origin xyz="0 0 0" rpy="0 0 0"/>
+    <parent link="lidar_link"/>
+    <child link="unilidar_imu"/>
   </joint>
 
   <!-- Intel RealSense Depth Camera -->

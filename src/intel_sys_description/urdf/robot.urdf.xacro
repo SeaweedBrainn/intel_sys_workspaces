@@ -213,24 +213,17 @@
     </visual>
   </link>
   <joint name="lidar_joint" type="fixed">
-    <origin xyz="0.0959 0.0 0.1284" rpy="0 1.5708 0"/>
+    <origin xyz="0.0959 0.0 0.1284" rpy="0 ${-pi/2} ${pi}"/>
     <parent link="base_link"/>
     <child link="lidar_link"/>
   </joint>
 
-  <!-- Unitree Driver Hardware Frame Aliases (connects vendor frames to standard ROS tree) -->
-  <link name="unilidar_lidar"/>
-  <joint name="unilidar_lidar_alias_joint" type="fixed">
-    <origin xyz="0 0 0" rpy="0 0 0"/>
+  <!-- Unitree L2 Internal IMU -->
+  <link name="lidar_imu_link"/>
+  <joint name="lidar_imu_joint" type="fixed">
+    <origin xyz="0.007698 0.014655 -0.00667" rpy="0 0 0"/>
     <parent link="lidar_link"/>
-    <child link="unilidar_lidar"/>
-  </joint>
-
-  <link name="unilidar_imu"/>
-  <joint name="unilidar_imu_alias_joint" type="fixed">
-    <origin xyz="0 0 0" rpy="0 0 0"/>
-    <parent link="lidar_link"/>
-    <child link="unilidar_imu"/>
+    <child link="lidar_imu_link"/>
   </joint>
 
   <!-- Intel RealSense Depth Camera -->
@@ -399,7 +392,7 @@
       <update_rate>250</update_rate>
       <pose relative_to="lidar_link">0.007698 0.014655 -0.00667 0 0 0</pose>
       <topic>/lidar/imu</topic>
-      <gz_frame_id>lidar_link</gz_frame_id>
+      <gz_frame_id>lidar_imu_link</gz_frame_id>
       <imu>
         <angular_velocity>
           <x><noise type="gaussian"><mean>0.0</mean><stddev>0.0002</stddev></noise></x>

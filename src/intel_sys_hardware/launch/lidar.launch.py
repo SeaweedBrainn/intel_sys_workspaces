@@ -14,6 +14,7 @@ def generate_launch_description():
             parameters=[{
                 'cloud_frame': 'lidar_link',
                 'imu_frame': 'lidar_imu_link',
+                'use_system_timestamp': True,
             }],
             remappings=[
                 ('/unilidar/cloud', '/lidar/points_raw'),

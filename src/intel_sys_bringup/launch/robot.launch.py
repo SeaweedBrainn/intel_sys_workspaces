@@ -75,7 +75,7 @@ def generate_launch_description():
         foxglove_port_arg,
         description_launch,
         hardware_launch,
-        localization_launch,
-        navigation_launch,
+        # localization_launch,
+        # navigation_launch,
         foxglove_bridge_node
     ])

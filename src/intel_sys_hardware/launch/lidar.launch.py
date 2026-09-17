@@ -19,6 +19,8 @@ def generate_launch_description():
             remappings=[
                 ('/unilidar/cloud', '/lidar/points_raw'),
                 ('/unilidar/imu', '/lidar/imu'),
+                ('/tf', '/unilidar/tf'),
+                ('tf', '/unilidar/tf'),
             ]
         )
     ])

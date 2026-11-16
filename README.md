@@ -66,6 +66,12 @@ intel_sys_workspaces/
 
 ---
 
+## Remote Access
+
+The Jetson is reachable over SSH via Tailscale (`ssh jetson`), so you can build, test, and drive it from your laptop (including with Claude Code). See [docs/REMOTE_ACCESS.md](docs/REMOTE_ACCESS.md) for setup.
+
+---
+
 ## Hardware Setup (One-Time Setup on Host)
 
 To ensure the STM32 microcontroller binds consistently to `/dev/rrc` with read/write permissions:

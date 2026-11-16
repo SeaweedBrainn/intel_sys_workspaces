@@ -1,0 +1,34 @@
+# Overlay: enables the Zenoh RMW and runs a local zenohd router.
+# Use via: ./run_docker.sh --zenoh   (or COMPOSE_FILE=docker-compose.yml:docker-compose.zenoh.yml)
+services:
+  zenohd:
+    image: ${ZENOH_IMAGE:-intel-sys-rover:latest}
+    container_name: intel-sys-zenohd
+    network_mode: host
+    ipc: host
+    command: ["bash", "-lc", "source /opt/ros/humble/setup.bash && ros2 run rmw_zenoh_cpp rmw_zenohd"]
+    # The router config lives in the repo (docker/zenoh/router.json5); mount the
+    # workspace read-only so ZENOH_ROUTER_CONFIG_URI resolves inside this container.
+    volumes:
+      - ./:/workspaces/intel_sys:ro
+    env_file:
+      - docker/zenoh.env
+    restart: unless-stopped
+
+  intel-sys-rover:
+    env_file:
+      - docker/zenoh.env
+    depends_on:
+      - zenohd
+
+  intel-sys-sim:
+    env_file:
+      - docker/zenoh.env
+    depends_on:
+      - zenohd
+
+  intel-sys:
+    env_file:
+      - docker/zenoh.env
+    depends_on:
+      - zenohd

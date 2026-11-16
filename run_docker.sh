@@ -21,6 +21,7 @@ REBUILD=false
 STOP_CONTAINER=false
 PASSTHROUGH_ARGS=()
 ENABLE_NVIDIA=auto
+ENABLE_ZENOH=false
 TARGET_MODE=""
 
 # 1. Parse arguments
@@ -43,6 +44,9 @@ for arg in "$@"; do
             ;;
         --cpu)
             ENABLE_NVIDIA=false
+            ;;
+        --zenoh)
+            ENABLE_ZENOH=true
             ;;
         *)
             PASSTHROUGH_ARGS+=("$arg")
@@ -86,6 +90,17 @@ else
         export COMPOSE_FILE="docker-compose.yml"
         PLATFORM_NAME="Simulation [x86_64 standard CPU]"
     fi
+fi
+
+# 2b. Zenoh RMW overlay (zenohd router + docker/zenoh.env). Router uses the same image as the target.
+if [ "$ENABLE_ZENOH" = true ]; then
+    export COMPOSE_FILE="${COMPOSE_FILE}:docker-compose.zenoh.yml"
+    if [ "$TARGET_MODE" = "rover" ]; then
+        export ZENOH_IMAGE="intel-sys-rover:latest"
+    else
+        export ZENOH_IMAGE="intel-sys-sim:latest"
+    fi
+    PLATFORM_NAME="${PLATFORM_NAME} + Zenoh RMW"
 fi
 
 # 3. Stop containers if requested

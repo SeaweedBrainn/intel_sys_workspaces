@@ -55,6 +55,9 @@ class LidarBodyFilter(Node):
         pub_qos.reliability = ReliabilityPolicy.RELIABLE
         pub_qos.durability = DurabilityPolicy.VOLATILE
 
+        self._dtype_key = None
+        self._dtype_cache = None
+
         self.pub_ = self.create_publisher(PointCloud2, output_topic, pub_qos)
         self.sub_ = self.create_subscription(PointCloud2, input_topic, self.cloud_callback, sub_qos)
 
@@ -66,6 +69,16 @@ class LidarBodyFilter(Node):
         )
 
     def build_numpy_dtype(self, fields, point_step):
+        # The layout is identical for every cloud from one driver, so cache it.
+        key = (point_step, tuple((f.name, f.offset, f.datatype) for f in fields))
+        if self._dtype_key == key:
+            return self._dtype_cache
+        dtype = self._compute_numpy_dtype(fields, point_step)
+        self._dtype_key = key
+        self._dtype_cache = dtype
+        return dtype
+
+    def _compute_numpy_dtype(self, fields, point_step):
         offset = 0
         dtype_list = []
         for f in fields:

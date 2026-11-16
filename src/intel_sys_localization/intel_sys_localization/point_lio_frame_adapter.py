@@ -3,6 +3,8 @@ import rclpy
 from rclpy.node import Node
 from rclpy.qos import QoSProfile, ReliabilityPolicy, DurabilityPolicy
 from rclpy.time import Time
+from rclpy.executors import MultiThreadedExecutor
+from rclpy.callback_groups import ReentrantCallbackGroup
 from nav_msgs.msg import Odometry, Path
 from sensor_msgs.msg import PointCloud2, PointField
 from geometry_msgs.msg import TransformStamped
@@ -137,9 +139,12 @@ class PointLioFrameAdapter(Node):
         self.path_pub = self.create_publisher(Path, path_topic, reliable_qos)
         self.path_alias_pub = self.create_publisher(Path, '/path', reliable_qos)
 
-        # Subscriptions
-        self.odom_sub = self.create_subscription(Odometry, raw_odom_topic, self.odom_callback, reliable_qos)
-        self.cloud_sub = self.create_subscription(PointCloud2, raw_cloud_topic, self.cloud_callback, sensor_qos)
+        # Subscriptions. Odom (high rate) and cloud (heavy transform) run in a reentrant
+        # group so a slow cloud callback does not stall the 250 Hz odom/TF path.
+        # The executor is MultiThreadedExecutor in main().
+        concurrent_cb_group = ReentrantCallbackGroup()
+        self.odom_sub = self.create_subscription(Odometry, raw_odom_topic, self.odom_callback, reliable_qos, callback_group=concurrent_cb_group)
+        self.cloud_sub = self.create_subscription(PointCloud2, raw_cloud_topic, self.cloud_callback, sensor_qos, callback_group=concurrent_cb_group)
         self.path_sub = self.create_subscription(Path, raw_path_topic, self.path_callback, reliable_qos)
 
         self.get_logger().info(
@@ -303,11 +308,14 @@ class PointLioFrameAdapter(Node):
 def main(args=None):
     rclpy.init(args=args)
     node = PointLioFrameAdapter()
+    executor = MultiThreadedExecutor(num_threads=3)
+    executor.add_node(node)
     try:
-        rclpy.spin(node)
+        executor.spin()
     except (KeyboardInterrupt, rclpy.executors.ExternalShutdownException):
         pass
     finally:
+        executor.shutdown()
         node.destroy_node()
         if rclpy.ok():
             rclpy.shutdown()

@@ -43,6 +43,17 @@ VIO dependency (decision gate before Phase 6): reserve a pinned entry in `third_
 
 Disk: about 27 GB free, and each image is about 20 GB. Pruning old images (`autonomy-jetson:arm64`, `intel-sys:arm64`) needs approval first.
 
+## TODO
+
+- [ ] **CycloneDDS comparison.** Add `ros-humble-rmw-cyclonedds-cpp` to `Dockerfile.rover` (it is missing from the image, so `scripts/compare_rmw.sh` fails its CycloneDDS leg). Then run loopback and sensor-path latency under Zenoh, CycloneDDS, and FastRTPS, three runs each. Current baseline: Zenoh and FastRTPS are about equal on loopback (p50 ~1.05 ms vs ~1.08 ms).
+- [ ] Confirm the drive kinematics. The hardware is modeled as mecanum (four fixed continuous wheels); the wheels may be swerve modules. Lateral and yaw tests depend on the answer.
+- [ ] **Subscribers do not re-match after a publisher restart under rmw_zenoh.** Observed: after the STM32 stack was restarted, the dashboard's IMU and odometry subscriptions stayed at 0 Hz until the dashboard itself was restarted. Nav2 and Point-LIO would have the same failure. Investigate the rmw_zenoh session/liveliness behaviour and decide on a fix (or a supervised restart of consumers).
+- [ ] **STM32 USB drop is not detected.** The board re-enumerated (`/dev/ttyACM0` recreated) while the bridge kept running on the dead file descriptor and published nothing, with no error. Add a serial liveness watchdog in `ros_robot_controller_node.py` that reopens the port and raises a diagnostic.
+- [ ] **Dashboard rosout callback bug (fixed in this branch).** Comparing `Log.level` against `Log.WARN` (bytes) killed the executor. Keep the `spin_error` surface and the regression test.
+- [ ] **Battery reading units.** The bridge passes the raw board value through; it reads about 4.1–4.2 V, which looks like one cell rather than a 2S pack. Confirm with a multimeter before trusting it.
+- [ ] Wheel odometry is integrated from the commanded speeds, so `response_test.py` validates the software path, not physical motion. Physical motion needs a floor check or encoder feedback.
+- [ ] Decide the autonomy gate: no untethered Nav2 run until obstacle sensing (LiDAR or camera) is live.
+
 ## Open questions
 
 - Confirm the VIO library choice (Isaac ROS vs OpenVINS).

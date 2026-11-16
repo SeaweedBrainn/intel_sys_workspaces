@@ -1,0 +1,20 @@
+// rmw_zenoh_cpp client session config for the robot nodes.
+// Base: upstream DEFAULT_RMW_ZENOH_SESSION_CONFIG.json5 (not verified in-container yet;
+// check /opt/ros/humble/share/rmw_zenoh_cpp/config/ after the build).
+// Overrides are kept to what matters for one host:
+//  - connect to the local router only (no multicast scouting)
+//  - shared-memory transport for same-host pub/sub, which avoids copying large
+//    PointCloud2 / Image messages through the loopback stack
+{
+  mode: "client",
+  connect: {
+    endpoints: ["tcp/127.0.0.1:7447"],
+  },
+  scouting: {
+    multicast: { enabled: false },
+    gossip: { enabled: false },
+  },
+  transport: {
+    shared_memory: { enabled: true },
+  },
+}

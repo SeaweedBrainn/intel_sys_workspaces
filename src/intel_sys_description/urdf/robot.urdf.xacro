@@ -213,7 +213,8 @@
     </visual>
   </link>
   <joint name="lidar_joint" type="fixed">
-    <origin xyz="0.0959 0.0 0.1284" rpy="0 ${-pi/2} ${pi}"/>
+    <!-- lidar tilt fixed from measured gravity on 2026-11-21, previously rpy 0 -pi/2 pi, yaw unchanged -->
+    <origin xyz="0.0959 0.0 0.1284" rpy="1.868822 -1.219393 1.308338"/>
     <parent link="base_link"/>
     <child link="lidar_link"/>
   </joint>

@@ -1,0 +1,4 @@
+intel_sys_interfaces/GetBusServoCmd[] cmd
+---
+bool success
+intel_sys_interfaces/BusServoState[] state

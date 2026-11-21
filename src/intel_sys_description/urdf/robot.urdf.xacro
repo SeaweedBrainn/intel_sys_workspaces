@@ -1,0 +1,463 @@
+<?xml version="1.0" encoding="utf-8"?>
+<robot name="intel_sys_robot" xmlns:xacro="http://ros.org/wiki/xacro">
+
+  <!-- ==================== MATERIALS ==================== -->
+  <material name="black">
+    <color rgba="0.1 0.1 0.1 1.0"/>
+  </material>
+  <material name="white">
+    <color rgba="0.9 0.9 0.9 1.0"/>
+  </material>
+  <material name="green">
+    <color rgba="0.1 0.8 0.1 1.0"/>
+  </material>
+  <material name="gray">
+    <color rgba="0.5 0.5 0.5 1.0"/>
+  </material>
+
+  <!-- ==================== INERTIAL MACROS ==================== -->
+  <xacro:macro name="box_inertial" params="m w h d">
+    <inertial>
+      <mass value="${m}"/>
+      <inertia ixx="${(m/12) * (h*h + d*d)}" ixy="0.0" ixz="0.0"
+               iyy="${(m/12) * (w*w + d*d)}" iyz="0.0"
+               izz="${(m/12) * (w*w + h*h)}"/>
+    </inertial>
+  </xacro:macro>
+
+  <xacro:macro name="cylinder_inertial" params="m r h">
+    <inertial>
+      <mass value="${m}"/>
+      <inertia ixx="${(m/12) * (3*r*r + h*h)}" ixy="0.0" ixz="0.0"
+               iyy="${(m/12) * (3*r*r + h*h)}" iyz="0.0"
+               izz="${(m/2) * (r*r)}"/>
+    </inertial>
+  </xacro:macro>
+
+  <!-- ==================== PARAMETERS ==================== -->
+  <xacro:property name="base_link_mass" value="1.6"/>
+  <xacro:property name="base_link_w" value="0.297"/>
+  <xacro:property name="base_link_h" value="0.145"/>
+  <xacro:property name="base_link_d" value="0.11255"/>
+
+  <xacro:property name="wheel_link_mass" value="0.1"/>
+  <xacro:property name="wheel_link_radius" value="0.049"/>
+  <xacro:property name="wheel_link_length" value="0.04167"/>
+
+  <!-- ==================== CHASSIS & BASE ==================== -->
+  <link name="base_footprint"/>
+
+  <joint name="base_joint" type="fixed">
+    <parent link="base_footprint"/>
+    <child link="base_link"/>
+    <origin xyz="0.0 0.0 0.005" rpy="0 0 0"/>
+  </joint>
+
+  <link name="base_link">
+    <xacro:box_inertial m="${base_link_mass}" w="${base_link_w}" h="${base_link_h}" d="${base_link_d}"/>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <mesh filename="package://intel_sys_description/meshes/base_link.stl"/>
+      </geometry>
+      <material name="green"/>
+    </visual>
+    <collision>
+      <origin xyz="${base_link_w/2.0 - 0.14810} 0 ${0.126437/2 + 0.02362364}" rpy="0 0 0"/>
+      <geometry>
+        <box size="${base_link_w} ${base_link_h} ${base_link_d}"/>
+      </geometry>
+    </collision>
+  </link>
+
+  <link name="back_shell_link">
+    <inertial>
+      <origin xyz="-1.228E-05 0.00218 -0.05005" rpy="0 0 0"/>
+      <mass value="0.0663"/>
+      <inertia ixx="5.65E-05" ixy="0.0" ixz="0.0" iyy="4.33E-05" iyz="0.0" izz="6.86E-05"/>
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <mesh filename="package://intel_sys_description/meshes/back_shell_link.stl"/>
+      </geometry>
+      <material name="black"/>
+    </visual>
+  </link>
+
+  <joint name="back_shell_joint" type="fixed">
+    <origin xyz="-0.076481 0 0.082796" rpy="-3.1416 0 1.5708"/>
+    <parent link="base_link"/>
+    <child link="back_shell_link"/>
+  </joint>
+
+  <!-- ==================== MECANUM WHEELS ==================== -->
+  <!-- Front Right Wheel -->
+  <link name="wheel_right_front_link">
+    <xacro:cylinder_inertial m="${wheel_link_mass}" r="${wheel_link_radius}" h="${wheel_link_length}"/>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <mesh filename="package://intel_sys_description/meshes/wheel_right_front_link.stl"/>
+      </geometry>
+      <material name="black"/>
+    </visual>
+    <collision>
+      <origin xyz="0 0 ${wheel_link_length/2.0}" rpy="0 0 0"/>
+      <geometry>
+        <cylinder length="${wheel_link_length}" radius="${wheel_link_radius}"/>
+      </geometry>
+    </collision>
+  </link>
+  <joint name="wheel_right_front_joint" type="continuous">
+    <origin xyz="0.097397 -0.086125 0.04508" rpy="1.5708 1.5708 0"/>
+    <parent link="base_link"/>
+    <child link="wheel_right_front_link"/>
+    <axis xyz="0 0 -1"/>
+  </joint>
+
+  <!-- Front Left Wheel -->
+  <link name="wheel_left_front_link">
+    <xacro:cylinder_inertial m="${wheel_link_mass}" r="${wheel_link_radius}" h="${wheel_link_length}"/>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <mesh filename="package://intel_sys_description/meshes/wheel_left_front_link.stl"/>
+      </geometry>
+      <material name="black"/>
+    </visual>
+    <collision>
+      <origin xyz="0 0 -${wheel_link_length/2.0}" rpy="0 0 0"/>
+      <geometry>
+        <cylinder length="${wheel_link_length}" radius="${wheel_link_radius}"/>
+      </geometry>
+    </collision>
+  </link>
+  <joint name="wheel_left_front_joint" type="continuous">
+    <origin xyz="0.097397 0.086125 0.04508" rpy="1.5708 1.5708 0"/>
+    <parent link="base_link"/>
+    <child link="wheel_left_front_link"/>
+    <axis xyz="0 0 -1"/>
+  </joint>
+
+  <!-- Back Right Wheel -->
+  <link name="wheel_right_back_link">
+    <xacro:cylinder_inertial m="${wheel_link_mass}" r="${wheel_link_radius}" h="${wheel_link_length}"/>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <mesh filename="package://intel_sys_description/meshes/wheel_right_back_link.stl"/>
+      </geometry>
+      <material name="black"/>
+    </visual>
+    <collision>
+      <origin xyz="0 0 ${wheel_link_length/2.0}" rpy="0 0 0"/>
+      <geometry>
+        <cylinder length="${wheel_link_length}" radius="${wheel_link_radius}"/>
+      </geometry>
+    </collision>
+  </link>
+  <joint name="wheel_right_back_joint" type="continuous">
+    <origin xyz="-0.097397 -0.086125 0.04508" rpy="1.5708 1.5708 0"/>
+    <parent link="base_link"/>
+    <child link="wheel_right_back_link"/>
+    <axis xyz="0 0 -1"/>
+  </joint>
+
+  <!-- Back Left Wheel -->
+  <link name="wheel_left_back_link">
+    <xacro:cylinder_inertial m="${wheel_link_mass}" r="${wheel_link_radius}" h="${wheel_link_length}"/>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <mesh filename="package://intel_sys_description/meshes/wheel_left_back_link.stl"/>
+      </geometry>
+      <material name="black"/>
+    </visual>
+    <collision>
+      <origin xyz="0 0 -${wheel_link_length/2.0}" rpy="0 0 0"/>
+      <geometry>
+        <cylinder length="${wheel_link_length}" radius="${wheel_link_radius}"/>
+      </geometry>
+    </collision>
+  </link>
+  <joint name="wheel_left_back_joint" type="continuous">
+    <origin xyz="-0.097397 0.086125 0.04508" rpy="1.5708 1.5708 0"/>
+    <parent link="base_link"/>
+    <child link="wheel_left_back_link"/>
+    <axis xyz="0 0 -1"/>
+  </joint>
+
+  <!-- ==================== SENSORS ==================== -->
+  <!-- IMU -->
+  <link name="imu_link"/>
+  <joint name="imu_joint" type="fixed">
+    <origin xyz="0.0 0.0 0.0867" rpy="0 0 ${-pi/2}"/>
+    <parent link="base_link"/>
+    <child link="imu_link"/>
+  </joint>
+
+  <!-- Unitree LiDAR L2 -->
+  <link name="lidar_link">
+    <inertial>
+      <origin xyz="-0.0157 0.0003 -0.0214" rpy="0 0 0"/>
+      <mass value="0.052"/>
+      <inertia ixx="1.45E-05" ixy="0.0" ixz="0.0" iyy="1.85E-05" iyz="0.0" izz="3.10E-05"/>
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <mesh filename="package://intel_sys_description/meshes/lidar_link.stl"/>
+      </geometry>
+      <material name="black"/>
+    </visual>
+  </link>
+  <joint name="lidar_joint" type="fixed">
+    <origin xyz="0.0959 0.0 0.1284" rpy="0 ${-pi/2} ${pi}"/>
+    <parent link="base_link"/>
+    <child link="lidar_link"/>
+  </joint>
+
+  <!-- Unitree L2 Internal IMU -->
+  <link name="lidar_imu_link"/>
+  <joint name="lidar_imu_joint" type="fixed">
+    <origin xyz="0.007698 0.014655 -0.00667" rpy="0 0 0"/>
+    <parent link="lidar_link"/>
+    <child link="lidar_imu_link"/>
+  </joint>
+
+  <!-- Intel RealSense Depth Camera -->
+  <link name="camera_link">
+    <inertial>
+      <origin xyz="0.00025 0.00268 -0.00569" rpy="0 0 0"/>
+      <mass value="0.228"/>
+      <inertia ixx="4.84E-05" ixy="0.0" ixz="0.0" iyy="4.08E-04" iyz="0.0" izz="4.29E-04"/>
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 1.5708"/>
+      <geometry>
+        <mesh filename="package://intel_sys_description/meshes/depth_camera_link.stl"/>
+      </geometry>
+      <material name="black"/>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 1.5708"/>
+      <geometry>
+        <mesh filename="package://intel_sys_description/meshes/depth_camera_link_collision.stl"/>
+      </geometry>
+    </collision>
+  </link>
+  <joint name="camera_joint" type="fixed">
+    <origin xyz="0.0288 0.0 0.2021" rpy="0 0 0"/>
+    <parent link="base_link"/>
+    <child link="camera_link"/>
+  </joint>
+
+  <!-- Optical frames -->
+  <link name="camera_depth_frame"/>
+  <joint name="camera_depth_joint" type="fixed">
+    <origin xyz="0 0 0" rpy="${-pi/2} 0 ${-pi/2}"/>
+    <parent link="camera_link"/>
+    <child link="camera_depth_frame"/>
+  </joint>
+
+  <link name="camera_color_frame"/>
+  <joint name="camera_color_joint" type="fixed">
+    <origin xyz="0 0 0" rpy="0 0 0"/>
+    <parent link="camera_link"/>
+    <child link="camera_color_frame"/>
+  </joint>
+
+  <!-- ==================== GAZEBO SIMULATION PLUGINS ==================== -->
+  <gazebo>
+    <!-- Mecanum Drive Plugin -->
+    <plugin filename="ignition-gazebo-mecanum-drive-system" name="ignition::gazebo::systems::MecanumDrive">
+      <front_left_joint>wheel_left_front_joint</front_left_joint>
+      <front_right_joint>wheel_right_front_joint</front_right_joint>
+      <back_left_joint>wheel_left_back_joint</back_left_joint>
+      <back_right_joint>wheel_right_back_joint</back_right_joint>
+      <wheel_separation>0.195</wheel_separation>
+      <wheelbase>0.216</wheelbase>
+      <wheel_radius>0.049</wheel_radius>
+      <min_velocity>-1.5</min_velocity>
+      <max_velocity>1.5</max_velocity>
+      <min_acceleration>-3.0</min_acceleration>
+      <max_acceleration>3.0</max_acceleration>
+      <topic>/cmd_vel</topic>
+    </plugin>
+
+    <!-- Odometry Publisher Plugin (Simulation Ground Truth Odometry) -->
+    <plugin filename="ignition-gazebo-odometry-publisher-system" name="ignition::gazebo::systems::OdometryPublisher">
+      <odom_frame>odom</odom_frame>
+      <robot_base_frame>base_footprint</robot_base_frame>
+      <odom_topic>/odom</odom_topic>
+      <odom_publish_frequency>50</odom_publish_frequency>
+    </plugin>
+
+    <!-- Joint State Publisher for Simulated Joints -->
+    <plugin filename="ignition-gazebo-joint-state-publisher-system" name="ignition::gazebo::systems::JointStatePublisher">
+      <topic>/joint_states</topic>
+    </plugin>
+  </gazebo>
+
+  <!-- Wheel Surface Friction Workaround -->
+  <gazebo reference="wheel_right_front_link">
+    <collision>
+      <surface>
+        <friction>
+          <ode>
+            <mu>0.1</mu>
+            <mu2>0.1</mu2>
+          </ode>
+        </friction>
+      </surface>
+    </collision>
+  </gazebo>
+
+  <gazebo reference="wheel_left_front_link">
+    <collision>
+      <surface>
+        <friction>
+          <ode>
+            <mu>0.1</mu>
+            <mu2>0.1</mu2>
+          </ode>
+        </friction>
+      </surface>
+    </collision>
+  </gazebo>
+
+  <gazebo reference="wheel_right_back_link">
+    <collision>
+      <surface>
+        <friction>
+          <ode>
+            <mu>0.1</mu>
+            <mu2>0.1</mu2>
+          </ode>
+        </friction>
+      </surface>
+    </collision>
+  </gazebo>
+
+  <gazebo reference="wheel_left_back_link">
+    <collision>
+      <surface>
+        <friction>
+          <ode>
+            <mu>0.1</mu>
+            <mu2>0.1</mu2>
+          </ode>
+        </friction>
+      </surface>
+    </collision>
+  </gazebo>
+
+  <!-- Unitree L2 3D LiDAR Sensor -->
+  <gazebo reference="lidar_link">
+    <sensor name="gpu_lidar" type="gpu_lidar">
+      <always_on>true</always_on>
+      <update_rate>10</update_rate>
+      <pose relative_to="lidar_link">0 0 0 0 0 0</pose>
+      <topic>/lidar/points</topic>
+      <gz_frame_id>lidar_link</gz_frame_id>
+      <lidar>
+        <scan>
+          <horizontal>
+            <samples>360</samples>
+            <resolution>1</resolution>
+            <min_angle>-3.14159265</min_angle>
+            <max_angle>3.14159265</max_angle>
+          </horizontal>
+          <vertical>
+            <samples>18</samples>
+            <resolution>1</resolution>
+            <min_angle>-0.14</min_angle>
+            <max_angle>1.53</max_angle>
+          </vertical>
+        </scan>
+        <range>
+          <min>0.05</min>
+          <max>30.0</max>
+          <resolution>0.01</resolution>
+        </range>
+      </lidar>
+    </sensor>
+  </gazebo>
+
+  <!-- Unitree L2 Internal IMU Sensor -->
+  <gazebo reference="lidar_link">
+    <sensor name="lidar_imu_sensor" type="imu">
+      <always_on>true</always_on>
+      <update_rate>250</update_rate>
+      <pose relative_to="lidar_link">0.007698 0.014655 -0.00667 0 0 0</pose>
+      <topic>/lidar/imu</topic>
+      <gz_frame_id>lidar_imu_link</gz_frame_id>
+      <imu>
+        <angular_velocity>
+          <x><noise type="gaussian"><mean>0.0</mean><stddev>0.0002</stddev></noise></x>
+          <y><noise type="gaussian"><mean>0.0</mean><stddev>0.0002</stddev></noise></y>
+          <z><noise type="gaussian"><mean>0.0</mean><stddev>0.0002</stddev></noise></z>
+        </angular_velocity>
+        <linear_acceleration>
+          <x><noise type="gaussian"><mean>0.0</mean><stddev>0.01</stddev></noise></x>
+          <y><noise type="gaussian"><mean>0.0</mean><stddev>0.01</stddev></noise></y>
+          <z><noise type="gaussian"><mean>0.0</mean><stddev>0.01</stddev></noise></z>
+        </linear_acceleration>
+      </imu>
+    </sensor>
+  </gazebo>
+
+  <!-- Intel RealSense Depth Camera Sensor -->
+  <gazebo reference="camera_link">
+    <sensor name="rgbd_camera" type="rgbd_camera">
+      <always_on>true</always_on>
+      <update_rate>30</update_rate>
+      <pose relative_to="camera_link">0 0 0 0 0 0</pose>
+      <topic>/camera</topic>
+      <gz_frame_id>camera_color_frame</gz_frame_id>
+      <camera>
+        <horizontal_fov>1.5184</horizontal_fov>
+        <image>
+          <width>640</width>
+          <height>480</height>
+          <format>R8G8B8</format>
+        </image>
+        <clip>
+          <near>0.1</near>
+          <far>10.0</far>
+        </clip>
+        <depth_camera>
+          <clip>
+            <near>0.1</near>
+            <far>10.0</far>
+          </clip>
+        </depth_camera>
+      </camera>
+    </sensor>
+  </gazebo>
+
+  <!-- STM32 IMU Sensor -->
+  <gazebo reference="imu_link">
+    <sensor name="imu_sensor" type="imu">
+      <always_on>true</always_on>
+      <update_rate>100</update_rate>
+      <pose relative_to="imu_link">0 0 0 0 0 0</pose>
+      <topic>/imu_raw</topic>
+      <gz_frame_id>imu_link</gz_frame_id>
+      <imu>
+        <angular_velocity>
+          <x><noise type="gaussian"><mean>0.0</mean><stddev>0.0002</stddev></noise></x>
+          <y><noise type="gaussian"><mean>0.0</mean><stddev>0.0002</stddev></noise></y>
+          <z><noise type="gaussian"><mean>0.0</mean><stddev>0.0002</stddev></noise></z>
+        </angular_velocity>
+        <linear_acceleration>
+          <x><noise type="gaussian"><mean>0.0</mean><stddev>0.01</stddev></noise></x>
+          <y><noise type="gaussian"><mean>0.0</mean><stddev>0.01</stddev></noise></y>
+          <z><noise type="gaussian"><mean>0.0</mean><stddev>0.01</stddev></noise></z>
+        </linear_acceleration>
+      </imu>
+    </sensor>
+  </gazebo>
+
+</robot>

@@ -1,0 +1,2 @@
+# JetAuto STM32 Robot Controller USB Serial
+SUBSYSTEM=="tty", ATTRS{idVendor}=="1a86", ATTRS{idProduct}=="55d4", SYMLINK+="rrc", MODE="0666"

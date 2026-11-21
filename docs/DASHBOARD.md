@@ -21,6 +21,21 @@ docker compose -f docker-compose.yml -f docker-compose.zenoh.yml run -d --rm --n
 
 ## Reaching it
 
+Two tokens, both in `~/.config/robot-dashboard/` on the robot (mode 600, stable across restarts):
+
+- `token`: **control**. Drive, path, autonomy, e-stop.
+- `view_token`: **view-only**. Status and map. Use it to watch the robot without being able to move it. Control buttons are disabled in the page.
+
+Get ready-to-open links on the robot, or from a laptop with the `jetson` ssh alias:
+
+```bash
+ssh jetson '~/intel_sys_workspaces/scripts/dashboard_url.sh'           # both
+ssh jetson '~/intel_sys_workspaces/scripts/dashboard_url.sh control'
+```
+
+Opening a `?token=` link stores the token for that browser tab and removes it from the address bar. "Forget token on this device" clears it. A rejected token shows a message on the page and changes nothing on the robot.
+
+
 - **Tailscale:** `http://<tailscale-ip>:8080/`, where the IP is `tailscale ip -4` on the robot. By default the dashboard binds to this address only, so other interfaces cannot reach it. The tailnet also includes other people's devices, so keep the token private.
 - **SSH tunnel:** `ssh -L 8080:localhost:8080 <user>@<robot>`, then `http://localhost:8080/`.
 - Pass the token in the page, or as `?token=...` the first time. The page stores it for the session only.
@@ -35,6 +50,43 @@ Env overrides: `DASHBOARD_HOST`, `DASHBOARD_PORT` (default 8080), `DASHBOARD_TOK
 - **E-stop:** software only. It publishes zero at 10 Hz until reset. It is not a hardware e-stop, so keep the physical stop within reach.
 - **Controller watchdog:** the mecanum controller zeroes the wheels if `/cmd_vel` is silent for 0.5 s, independent of the dashboard.
 - **Executor failure:** if the ROS executor dies, `spin_error` is shown in status and drive requests return HTTP 503.
+
+## Autonomous exploration
+
+Reactive LiDAR exploration runs inside the dashboard node (logic in `scripts/autonomy/explorer.py`), so the dashboard stays the only `/cmd_vel` publisher. Modes: `off`, `dry` (decides and shows commands, publishes nothing), and `live` (needs `{"mode":"live","confirm":"TETHERED"}`, a clear e-stop, and fresh LiDAR). Manual drive is refused while autonomy is armed.
+
+The Unitree L2 is mounted tilted and only sees the front half (azimuth -90° to +90°). The rear sector is never observed (shown as `blind`), and only the front half of each side sector is. The LiDAR's view points at the rover's physical rear, so a `+vx` on `/cmd_vel` drives away from what it sees. The explorer decides in the LiDAR's frame ("forward" = toward what it sees), and the dashboard rotates its command 180° (`vx`, `vy` negated, `wz` unchanged) before publishing. `/api/status` shows both (`autonomy.vx/vy/wz` and `autonomy.cmd_vel`). Set `DASHBOARD_LIDAR_FACES_REAR=0` if the LiDAR is remounted facing forward. Manual drive is not flipped.
+
+Scene capture is done offline from recorded bags (`record_data.sh`), so the explorer aims to reach unvisited space, sweep surfaces sideways so the LiDAR sees them from many positions, and keep motion slow. It keeps a coarse visit grid (0.5 m cells) from wheel odometry and uses it to rank headings and strafe directions. Wheel odometry drifts, especially when strafing, so the grid is only a hint over a run of a few minutes.
+
+| State | Behavior |
+|---|---|
+| `LOOK` | Spin one full turn in place at 0.3 rad/s so the LiDAR sweeps all around. Each heading is scored by front room (up to 5 m) plus the share of unvisited cells along it; headings with less than 0.9 m of room rank last. Runs at start, after each `SCAN`, and every 3 m of travel (60 s fallback). Needs odometry. |
+| `ORIENT` | Turn to the best heading from `LOOK`. |
+| `FORWARD` | 0.10 m/s, slowing linearly inside 1.5 m. Drifts sideways (vy 0.04 m/s) away from a side closer than 0.30 m without changing heading. |
+| `SCAN` | Surface ahead (≤ 1.0 m) and a side has ≥ 0.6 m: strafe along it at 0.08 m/s toward the side with more unvisited ground, holding 0.9 m from the surface by approaching only (never backing into the blind rear). Ends after 2 m, when the side closes to 0.30 m, or when the surface ends (front opens past 2 m); then `LOOK`. |
+| `REVERSE` | Off by default (`rear_observed=False`), since the rear is blind. |
+| `TURN` | Front ≤ 0.6 m and no side room: turn in place toward the more open side until the front clears. |
+| `STUCK` | A turn ran past 10 s. Latched until Reset. |
+| `STALE` | No LiDAR for 0.5 s: stop. |
+
+`/api/status` reports run stats under `autonomy.stats`: cells visited, area covered, distance driven, scan and look counts, and time per state. They reset when the mode changes. Tune from `Config` in `explorer.py`.
+
+Before running `live`, check each sector in `dry`: hold an object about 0.5 m in front and to each side and confirm the distance shows up.
+
+## Map and waypoints
+
+The page has a map of the area the robot has seen, plus point-to-point waypoints.
+
+- **Frame:** odometry. The origin is where wheel odometry started (boot, or a reset of the odometry). Odometry drifts, so the map is a local picture for short runs, not a survey. There is no SLAM or Nav2 yet (see `docs/ROADMAP.md`, Phases 4 and 8).
+- **Map:** LiDAR returns counted per 0.1 m cell (hits only), plus the wheel-odometry trail. Dark squares are returns, the blue line is the path travelled, and the arrow is the robot's LiDAR-forward heading (the same convention as autonomous exploration).
+- **Waypoints:** tap the map to add a goal (up to 50, within 100 m of the origin). The robot turns to face each goal, drives forward at up to 0.10 m/s, slows near the goal, and counts it reached within 0.10 m. It stops for anything at or inside 0.45 m in front and resumes when the path clears. It also stops for good if a goal takes longer than 60 s, or if LiDAR data goes stale (0.5 s).
+- **Dry run** computes and shows the commands without publishing. **Live (tethered)** needs `{"mode":"live","confirm":"TETHERED"}`, fresh LiDAR, and odometry. Keep the tether taut and your hand near the e-stop.
+- While the path is armed, manual drive and autonomous exploration are refused. E-stop and reset disarm it. Waypoints are kept across a reset.
+
+Before the first live run, check the frame in dry mode: push the robot by hand and confirm that the map's arrow turns and moves the way the robot does, and that obstacles appear where they are. If the arrow moves the wrong way relative to the robot, the LiDAR flip (`DASHBOARD_LIDAR_FACES_REAR`) is wrong, and waypoint runs would drive the wrong way.
+
+Endpoints (token required): `GET /api/map`, `POST /api/waypoints` with `{"points": [[x, y], ...]}`, `POST /api/nav` with `{"mode": "off" | "dry" | "live"}`, `POST /api/map/clear`.
 
 ## Status
 

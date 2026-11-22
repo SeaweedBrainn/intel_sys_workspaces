@@ -26,9 +26,3 @@ services:
       - docker/zenoh.env
     depends_on:
       - zenohd
-
-  intel-sys:
-    env_file:
-      - docker/zenoh.env
-    depends_on:
-      - zenohd

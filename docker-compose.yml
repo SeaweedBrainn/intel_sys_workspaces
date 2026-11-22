@@ -32,13 +32,3 @@ services:
       dockerfile: Dockerfile.rover
       network: host
     image: intel-sys-rover:latest
-
-  # Backwards compatibility alias
-  intel-sys:
-    <<: *common-config
-    container_name: intel-sys
-    build:
-      context: .
-      dockerfile: ${DOCKERFILE:-Dockerfile.sim}
-      network: host
-    image: intel-sys:latest

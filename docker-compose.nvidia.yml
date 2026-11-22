@@ -11,8 +11,6 @@ x-nvidia-gpu: &nvidia-gpu
             capabilities: [gpu]
 
 services:
-  intel-sys:
-    <<: *nvidia-gpu
   intel-sys-sim:
     <<: *nvidia-gpu
   intel-sys-rover:

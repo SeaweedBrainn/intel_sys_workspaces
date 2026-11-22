@@ -28,7 +28,5 @@ x-wsl-gpu: &wsl-gpu
     - /usr/lib/wsl:/usr/lib/wsl:ro
 
 services:
-  intel-sys:
-    <<: *wsl-gpu
   intel-sys-sim:
     <<: *wsl-gpu

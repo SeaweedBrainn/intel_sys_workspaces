@@ -1,23 +1,22 @@
+# colcon
 build/
-Livox-SDK2/
 install/
 log/
+
+# Python
 __pycache__/
-CMakeCache.txt
-CMakeFiles/
-cmake_install.cmake
+.pytest_cache/
+
+# Editors and OS
 .vscode/
 .idea/
 *~
-
-# rosbag formats
-rosbags/
-bags/
-results/lio/
-*.db3
-*.bag
-*mcap
-
-# Mac's Cache
 .DS_Store
-results/lio_variants/
+
+# Recordings and run outputs (bags are shared through Drive, not git)
+bags/
+*.db3
+*.mcap
+*.bag
+results/*
+!results/.gitkeep

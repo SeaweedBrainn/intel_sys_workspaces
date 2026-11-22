@@ -1,10 +1,7 @@
+# The images only COPY third_party/ and docker/; keep everything else out of the build context.
 .git
 build
 install
 log
-data
-rosbags
-ros2_ws
-catkin_point_lio_unilidar
-unilidar_sdk2-2.0.4
-ws_livox
+bags
+results

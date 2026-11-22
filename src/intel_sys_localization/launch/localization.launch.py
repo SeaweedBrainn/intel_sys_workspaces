@@ -16,6 +16,8 @@ def generate_launch_description():
     use_sim_time_arg = DeclareLaunchArgument('use_sim_time', default_value='false', description='Use simulation clock')
     lidar_type_arg = DeclareLaunchArgument('lidar_type', default_value='5', description='Point-LIO LiDAR Type (2: VELO16, 5: UNILIDAR)')
 
+    point_lio_params_arg = DeclareLaunchArgument(
+        'point_lio_params', default_value=default_point_lio_params, description='Point-LIO parameters YAML')
     slam_arg = DeclareLaunchArgument('slam', default_value='false', description='Also run RTAB-Map (map -> odom, /map)')
     slam_localization_arg = DeclareLaunchArgument(
         'slam_localization', default_value='false',
@@ -52,7 +54,7 @@ def generate_launch_description():
         name='point_lio',
         output='screen',
         parameters=[
-            default_point_lio_params,
+            LaunchConfiguration('point_lio_params'),
             {
                 'use_sim_time': use_sim_time,
                 'preprocess.lidar_type': lidar_type
@@ -104,6 +106,7 @@ def generate_launch_description():
     return LaunchDescription([
         use_sim_time_arg,
         lidar_type_arg,
+        point_lio_params_arg,
         slam_arg,
         slam_localization_arg,
         database_path_arg,

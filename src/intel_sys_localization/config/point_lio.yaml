@@ -55,7 +55,7 @@
                      0.0, 0.0, 1.0 ]
 
     odometry:
-      publish_odometry_without_downsample: true
+      publish_odometry_without_downsample: false  # true publishes odom + TF after every point (~30k msg/s on the L2); Point-LIO fell behind real time
 
     publish:
       path_en: false             # full-history path republished every update; lag grows over a run

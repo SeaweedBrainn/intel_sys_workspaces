@@ -45,7 +45,7 @@ The whole chain runs in Gazebo on the laptop (`intel-sys-sim`, amd64): `ros2 lau
   - RTAB-Map localization mode assumed the robot restarted at the last mapped pose; `RGBD/StartAtOrigin` is set.
 
 Next in the sim:
-- [ ] Point-LIO drift in long corridors (~1 m over 13 m). Check whether it is the sim LiDAR (18 rings, about 3,800 points per scan; the real L2 is much denser) or the Point-LIO parameters; record a real L2 bag down a corridor to compare.
+- [ ] Point-LIO drift in long corridors: 0.9 m, 1.4 m and 3.2 m on three runs down the same 13 m corridor, always as under-estimated forward travel. Not a CPU artifact: it got worse after moving the sim to the GPU (sensors at full rate, RTF 1.0). Looks like corridor degeneracy (parallel walls give no constraint along the corridor). Check whether it is the sim LiDAR (18 rings, about 3,600 points per scan; the real L2 is much denser) or the Point-LIO parameters; record a real L2 bag down a corridor to compare.
 - [ ] Localization mode: localize more often or accept larger corrections (`Rtabmap/DetectionRate`, `Icp/MaxCorrespondenceDistance`, `RGBD/LocalRadius`) so drift is pulled back mid-corridor, then pass the lap.
 - [ ] Without a camera there is no global relocalization: the robot must start at the map origin or be given `/rtabmap/initialpose`. Add a "set pose" control to the dashboard, or a fixed home spot.
 

@@ -33,13 +33,18 @@ def slam_overlay(params):
 
 
 def make_nav2(context):
-    params_file = LaunchConfiguration('params_file').perform(context)
+    with open(LaunchConfiguration('params_file').perform(context)) as f:
+        params = yaml.safe_load(f)
+    # Our behavior tree: Nav2's default without the BackUp recovery (see the XML).
+    # The path is only known at launch time, so it can't live in the YAML.
+    bt_xml = os.path.join(FindPackageShare('intel_sys_navigation').perform(context),
+                          'behavior_trees', 'navigate_to_pose_no_backup.xml')
+    params['bt_navigator']['ros__parameters']['default_nav_to_pose_bt_xml'] = bt_xml
     if LaunchConfiguration('slam').perform(context) == 'true':
-        with open(params_file) as f:
-            params = slam_overlay(yaml.safe_load(f))
-        fd, params_file = tempfile.mkstemp(prefix='nav2_params_slam_', suffix='.yaml')
-        with os.fdopen(fd, 'w') as f:
-            yaml.safe_dump(params, f)
+        params = slam_overlay(params)
+    fd, params_file = tempfile.mkstemp(prefix='nav2_params_', suffix='.yaml')
+    with os.fdopen(fd, 'w') as f:
+        yaml.safe_dump(params, f)
 
     nav2_bringup_pkg = FindPackageShare('nav2_bringup')
     return [IncludeLaunchDescription(

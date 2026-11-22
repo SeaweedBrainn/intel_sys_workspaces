@@ -31,7 +31,7 @@ Phases 1 through 4 can proceed now. Phases 5–7 already run in the sim and on b
 ## Next
 
 - [ ] Rebuild the rover image and run the chain on the robot, following [ROBOT_TEST_PLAN.md](ROBOT_TEST_PLAN.md).
-- [ ] Lower Nav2's limits for the first robot run (about 0.2 m/s, no reverse, no BackUp recovery): today's values are sim settings and can reverse into the unseen side.
+- [ ] Raise Nav2's first-run limits (0.2 m/s, no reverse, no BackUp recovery, set 2026-11-22) once it is proven on the robot.
 - [ ] Point-LIO on the Jetson: measure CPU and lag with a bag played on the Orin NX (about 30% of a laptop core at 0.1 m voxels; if it falls behind, switch to 0.4 m voxels).
 - [ ] Deploy the sensor-side front on the Jetson: controller and dashboard together; tell the team teleop "forward" has flipped.
 - [ ] Record a loop that ends exactly where it started (floor mark), with the camera on: measures drift, including height on level ground, and shows whether the camera's loop closures (`slam_camera:=true`) help.

@@ -107,7 +107,7 @@ Drive part of the loop again and watch Foxglove (fixed frame `map`).
 
 ## 6. Nav2, short goals (20 minutes, someone at the physical stop)
 
-**Before this step:** Nav2's limits are still sim settings: up to 0.5 m/s, and it may reverse (the BackUp recovery included) into the side neither sensor sees. Lower them for the first run (about 0.2 m/s, no reverse, no BackUp) before starting.
+Nav2 runs with first-run limits: at most 0.2 m/s and 0.6 rad/s, gentle acceleration, and it never drives backward (no reverse, and no BackUp recovery), because neither sensor sees behind the robot. Sideways moves are allowed; the sides are only partly seen, so keep the test area clear beside the robot.
 
 ```bash
 scripts/robot.sh up navigation        # keeps the running localization as it is

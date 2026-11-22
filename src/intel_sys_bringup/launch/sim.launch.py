@@ -20,6 +20,7 @@ def generate_launch_description():
     y_arg = DeclareLaunchArgument('y', default_value='0.0', description='Spawn Y position')
     z_arg = DeclareLaunchArgument('z', default_value='0.05', description='Spawn Z position')
     yaw_arg = DeclareLaunchArgument('yaw', default_value='0.0', description='Spawn Yaw orientation')
+    world_arg = DeclareLaunchArgument('world', default_value='default.sdf', description='World file in intel_sys_sim/worlds (e.g. loop.sdf)')
     slam_arg = DeclareLaunchArgument('slam', default_value='true', description='Run RTAB-Map and plan on its /map')
 
     # 1. Simulation Bridge / World (Spawns robot, Gazebo plugins, sensor bridges)
@@ -27,6 +28,7 @@ def generate_launch_description():
         PythonLaunchDescriptionSource(PathJoinSubstitution([sim_pkg, 'launch', 'sim.launch.py'])),
         launch_arguments={
             'headless': LaunchConfiguration('headless'),
+            'world': PathJoinSubstitution([sim_pkg, 'worlds', LaunchConfiguration('world')]),
             'use_sim_time': 'true',
             'x': LaunchConfiguration('x'),
             'y': LaunchConfiguration('y'),
@@ -77,6 +79,7 @@ def generate_launch_description():
         y_arg,
         z_arg,
         yaw_arg,
+        world_arg,
         slam_arg,
         sim_launch,
         localization_launch,

@@ -12,6 +12,7 @@ cmake_install.cmake
 
 # rosbag formats
 rosbags/
+bags/
 *.db3
 *.bag
 *mcap

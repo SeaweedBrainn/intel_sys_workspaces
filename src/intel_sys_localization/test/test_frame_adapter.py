@@ -8,7 +8,7 @@ import numpy as np
 import pytest
 
 from intel_sys_localization.point_lio_frame_adapter import (
-    base_in_odom, odom_anchor, rot_z, yaw_of)
+    base_in_odom, odom_anchor, planar, rot_z, yaw_of)
 
 
 def rpy(roll, pitch, yaw):
@@ -80,3 +80,12 @@ def test_real_slope_shows_as_base_pitch(start):
     R_b, _ = base_in_odom(R_oc, p_oc, MOUNT_R, MOUNT_T, *raw_pose(R1, p0))
     pitch = np.arcsin(-R_b[2, 0])
     assert pitch == pytest.approx(np.radians(-10))
+
+
+def test_planar_drops_height_and_tilt_keeps_xy_yaw():
+    R = rpy(np.radians(2), np.radians(-3), np.radians(50))
+    p = np.array([1.5, -0.7, 0.04])
+    R_p, p_p = planar(R, p)
+    np.testing.assert_allclose(p_p, [1.5, -0.7, 0.0], atol=1e-12)
+    np.testing.assert_allclose(R_p @ [0, 0, 1], [0, 0, 1], atol=1e-12)
+    assert yaw_of(R_p) == pytest.approx(np.radians(50))

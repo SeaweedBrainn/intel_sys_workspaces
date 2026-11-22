@@ -115,6 +115,17 @@ def base_in_odom(R_oc, p_oc, mount_R, mount_T, R_raw, p_raw):
     return R_base, p_base
 
 
+def planar(R_base, p_base):
+    """Project a base pose onto the ground plane (REP-120 base_footprint).
+
+    Keeps x, y and yaw; drops z, roll and pitch. Point-LIO's vertical drift and
+    small tilt errors otherwise lift the floor in the clouds (via base_footprint ->
+    lidar_link), and costmaps with a low min obstacle height mark it as obstacles.
+    """
+    p = np.array([p_base[0], p_base[1], 0.0])
+    return rot_z(yaw_of(R_base)), p
+
+
 class PointLioFrameAdapter(Node):
     """
     Standardizes Point-LIO legacy output frames (camera_init / body) into standard ROS REP-105 frames.
@@ -129,6 +140,9 @@ class PointLioFrameAdapter(Node):
         self.declare_parameter('base_frame', 'base_footprint')
         self.declare_parameter('child_frame', 'lidar_link')
         self.declare_parameter('publish_tf', True)
+        # true: odom -> base_footprint is x, y, yaw only (REP-120, flat floors).
+        # false: full 6-DoF from Point-LIO (ramps, uneven ground).
+        self.declare_parameter('planar', True)
         self.declare_parameter('raw_odom_topic', '/point_lio/raw_odom')
         self.declare_parameter('odom_topic', '/odom')
         self.declare_parameter('raw_cloud_topic', '/point_lio/raw_cloud_registered')
@@ -140,6 +154,7 @@ class PointLioFrameAdapter(Node):
         self.base_frame = self.get_parameter('base_frame').get_parameter_value().string_value
         self.child_frame = self.get_parameter('child_frame').get_parameter_value().string_value
         self.publish_tf = self.get_parameter('publish_tf').get_parameter_value().bool_value
+        self.planar = self.get_parameter('planar').get_parameter_value().bool_value
         raw_odom_topic = self.get_parameter('raw_odom_topic').get_parameter_value().string_value
         odom_topic = self.get_parameter('odom_topic').get_parameter_value().string_value
         raw_cloud_topic = self.get_parameter('raw_cloud_topic').get_parameter_value().string_value
@@ -242,6 +257,8 @@ class PointLioFrameAdapter(Node):
         # 3. Base_footprint pose in odom (T_odom_base = T_odom_caminit * T_caminit_sensor * T_sensor_base)
         R_base_odom, p_base_odom = base_in_odom(
             self.anchor_R, self.anchor_T, self.mount_R, self.mount_T, R_raw, p_raw)
+        if self.planar:
+            R_base_odom, p_base_odom = planar(R_base_odom, p_base_odom)
         q_base_odom = rot_matrix_to_quat(R_base_odom)
 
         # 4. Construct standard REP-105 Odometry message

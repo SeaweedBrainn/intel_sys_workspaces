@@ -76,6 +76,45 @@ def quat_multiply(q1, q2):
     ])
 
 
+def yaw_of(R):
+    """Heading of a rotation matrix: angle of its x axis in the xy plane."""
+    return float(np.arctan2(R[1, 0], R[0, 0]))
+
+
+def rot_z(yaw):
+    c, s = np.cos(yaw), np.sin(yaw)
+    return np.array([[c, -s, 0.0], [s, c, 0.0], [0.0, 0.0, 1.0]])
+
+
+def odom_anchor(mount_R, mount_T, R_raw0, p_raw0):
+    """Place Point-LIO's world frame (camera_init) inside odom, from its first pose.
+
+    With gravity_align, camera_init is level (gravity along -z) and the raw pose is
+    the LiDAR's pose in it, tilt included. So camera_init is NOT the LiDAR mount
+    frame; treating it as one applies the mount tilt twice.
+
+    Choose odom = camera_init rotated about z and shifted so the base starts at
+    the origin with zero yaw. odom stays gravity-aligned, and the base keeps its
+    real roll/pitch (zero on flat ground if the URDF mount is right).
+
+    Returns (R_odom_caminit, p_odom_caminit).
+    """
+    R_base0 = R_raw0 @ mount_R.T
+    p_base0 = p_raw0 - R_base0 @ mount_T
+    R_oc = rot_z(-yaw_of(R_base0))
+    p_oc = -R_oc @ p_base0
+    return R_oc, p_oc
+
+
+def base_in_odom(R_oc, p_oc, mount_R, mount_T, R_raw, p_raw):
+    """Base pose in odom from a raw Point-LIO LiDAR pose in camera_init."""
+    R_sensor = R_oc @ R_raw
+    p_sensor = R_oc @ p_raw + p_oc
+    R_base = R_sensor @ mount_R.T
+    p_base = p_sensor - R_base @ mount_T
+    return R_base, p_base
+
+
 class PointLioFrameAdapter(Node):
     """
     Standardizes Point-LIO legacy output frames (camera_init / body) into standard ROS REP-105 frames.
@@ -119,6 +158,10 @@ class PointLioFrameAdapter(Node):
         self.mount_R = np.eye(3)
         self.mount_Q = np.array([0.0, 0.0, 0.0, 1.0])
         self.tf_calibrated = False
+
+        # odom <- camera_init, fixed from the first Point-LIO pose (see odom_anchor)
+        self.anchor_R = None
+        self.anchor_T = None
 
         # Timer to lookup dynamic mount transform from URDF
         self.tf_timer = self.create_timer(0.2, self.lookup_mount_transform)
@@ -167,21 +210,10 @@ class PointLioFrameAdapter(Node):
             self.mount_R = quat_to_rot_matrix(r.x, r.y, r.z, r.w)
             self.tf_calibrated = True
 
-            # Publish dynamic static transform: odom -> camera_init
-            static_tf = TransformStamped()
-            static_tf.header.stamp = self.get_clock().now().to_msg()
-            static_tf.header.frame_id = self.odom_frame
-            static_tf.child_frame_id = 'camera_init'
-            static_tf.transform.translation.x = t.x
-            static_tf.transform.translation.y = t.y
-            static_tf.transform.translation.z = t.z
-            static_tf.transform.rotation = r
-            self.static_tf_broadcaster.sendTransform(static_tf)
-
             self.get_logger().info(
-                f'Dynamic URDF Calibration Locked: [{self.base_frame} -> {self.child_frame}] '
+                f'Mount from URDF: [{self.base_frame} -> {self.child_frame}] '
                 f'Translation={self.mount_T.round(4)}, Quat={self.mount_Q.round(4)}. '
-                f'Direct TF mode active: [{self.odom_frame} -> {self.base_frame}]'
+                f'Waiting for the first Point-LIO pose to anchor odom.'
             )
             # Stop periodic timer once transform is acquired
             self.tf_timer.cancel()
@@ -201,14 +233,15 @@ class PointLioFrameAdapter(Node):
             msg.pose.pose.orientation.w
         ])
 
-        # 2. Sensor pose in odom frame (T_odom_sensor = T_odom_caminit * T_caminit_sensor)
-        p_sensor_odom = self.mount_R @ p_raw + self.mount_T
-        q_sensor_odom = quat_multiply(self.mount_Q, q_raw)
-        R_sensor_odom = quat_to_rot_matrix(q_sensor_odom[0], q_sensor_odom[1], q_sensor_odom[2], q_sensor_odom[3])
+        R_raw = quat_to_rot_matrix(*q_raw)
 
-        # 3. Base_footprint pose in odom frame (T_odom_base = T_odom_sensor * T_sensor_base)
-        R_base_odom = R_sensor_odom @ self.mount_R.T
-        p_base_odom = p_sensor_odom - R_base_odom @ self.mount_T
+        # 2. First pose fixes where camera_init sits in odom
+        if self.anchor_R is None:
+            self.set_anchor(R_raw, p_raw)
+
+        # 3. Base_footprint pose in odom (T_odom_base = T_odom_caminit * T_caminit_sensor * T_sensor_base)
+        R_base_odom, p_base_odom = base_in_odom(
+            self.anchor_R, self.anchor_T, self.mount_R, self.mount_T, R_raw, p_raw)
         q_base_odom = rot_matrix_to_quat(R_base_odom)
 
         # 4. Construct standard REP-105 Odometry message
@@ -245,9 +278,34 @@ class PointLioFrameAdapter(Node):
             tf_msg.transform.rotation.w = float(q_base_odom[3])
             self.tf_broadcaster.sendTransform(tf_msg)
 
+    def set_anchor(self, R_raw0, p_raw0):
+        self.anchor_R, self.anchor_T = odom_anchor(self.mount_R, self.mount_T, R_raw0, p_raw0)
+
+        static_tf = TransformStamped()
+        static_tf.header.stamp = self.get_clock().now().to_msg()
+        static_tf.header.frame_id = self.odom_frame
+        static_tf.child_frame_id = 'camera_init'
+        static_tf.transform.translation.x = float(self.anchor_T[0])
+        static_tf.transform.translation.y = float(self.anchor_T[1])
+        static_tf.transform.translation.z = float(self.anchor_T[2])
+        q = rot_matrix_to_quat(self.anchor_R)
+        static_tf.transform.rotation.x = float(q[0])
+        static_tf.transform.rotation.y = float(q[1])
+        static_tf.transform.rotation.z = float(q[2])
+        static_tf.transform.rotation.w = float(q[3])
+        self.static_tf_broadcaster.sendTransform(static_tf)
+
+        self.get_logger().info(
+            f'odom anchored on the first Point-LIO pose: [{self.odom_frame} -> camera_init] '
+            f'yaw={np.degrees(yaw_of(self.anchor_R)):.1f} deg, T={self.anchor_T.round(4)}. '
+            f'Direct TF mode active: [{self.odom_frame} -> {self.base_frame}]'
+        )
+
     def cloud_callback(self, msg: PointCloud2):
-        # Transform points from camera_init into odom using dynamic 6-DOF mount pose
-        if self.tf_calibrated and len(msg.data) > 0:
+        # Clouds are in camera_init; drop them until odom is anchored.
+        if self.anchor_R is None:
+            return
+        if len(msg.data) > 0:
             try:
                 fields_dict = {f.name: (DTYPE_MAP.get(f.datatype, np.float32), f.offset) for f in msg.fields}
                 if 'x' in fields_dict and 'y' in fields_dict and 'z' in fields_dict:
@@ -263,7 +321,7 @@ class PointLioFrameAdapter(Node):
                         y = arr['y'].astype(np.float32)
                         z = arr['z'].astype(np.float32)
                         xyz = np.column_stack([x, y, z])
-                        xyz_trans = (self.mount_R @ xyz.T).T + self.mount_T
+                        xyz_trans = (self.anchor_R @ xyz.T).T + self.anchor_T
 
                         data_arr = np.frombuffer(msg.data, dtype=np.uint8).copy()
                         view_mut = np.ndarray(buffer=data_arr, dtype=dtype_view, shape=(len(arr),))
@@ -279,27 +337,30 @@ class PointLioFrameAdapter(Node):
         self.cloud_alias_pub.publish(msg)
 
     def path_callback(self, msg: Path):
+        # Path poses are LiDAR poses in camera_init; drop until odom is anchored.
+        if self.anchor_R is None:
+            return
+        anchor_Q = rot_matrix_to_quat(self.anchor_R)
         msg.header.frame_id = self.odom_frame
         for pose in msg.poses:
             pose.header.frame_id = self.odom_frame
-            if self.tf_calibrated:
-                p = np.array([pose.pose.position.x, pose.pose.position.y, pose.pose.position.z])
-                p_trans = self.mount_R @ p + self.mount_T
-                pose.pose.position.x = float(p_trans[0])
-                pose.pose.position.y = float(p_trans[1])
-                pose.pose.position.z = float(p_trans[2])
+            p = np.array([pose.pose.position.x, pose.pose.position.y, pose.pose.position.z])
+            p_trans = self.anchor_R @ p + self.anchor_T
+            pose.pose.position.x = float(p_trans[0])
+            pose.pose.position.y = float(p_trans[1])
+            pose.pose.position.z = float(p_trans[2])
 
-                q_orig = np.array([
-                    pose.pose.orientation.x,
-                    pose.pose.orientation.y,
-                    pose.pose.orientation.z,
-                    pose.pose.orientation.w
-                ])
-                q_trans = quat_multiply(self.mount_Q, q_orig)
-                pose.pose.orientation.x = float(q_trans[0])
-                pose.pose.orientation.y = float(q_trans[1])
-                pose.pose.orientation.z = float(q_trans[2])
-                pose.pose.orientation.w = float(q_trans[3])
+            q_orig = np.array([
+                pose.pose.orientation.x,
+                pose.pose.orientation.y,
+                pose.pose.orientation.z,
+                pose.pose.orientation.w
+            ])
+            q_trans = quat_multiply(anchor_Q, q_orig)
+            pose.pose.orientation.x = float(q_trans[0])
+            pose.pose.orientation.y = float(q_trans[1])
+            pose.pose.orientation.z = float(q_trans[2])
+            pose.pose.orientation.w = float(q_trans[3])
 
         self.path_pub.publish(msg)
         self.path_alias_pub.publish(msg)

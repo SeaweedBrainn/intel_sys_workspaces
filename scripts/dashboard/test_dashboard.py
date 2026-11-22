@@ -145,3 +145,39 @@ def test_base_and_odom_frames_are_inverse():
     w = dashboard.base_to_odom(np.array([[1.0, 0.0, 0.0]], np.float32), (0.0, 0.0, math.pi / 2))
     assert np.allclose(w[0], [0.0, 1.0, 0.0], atol=1e-6)   # 1 m ahead after a 90 deg turn is +y
 
+
+
+def _rpy(r, p, y):
+    cr, sr, cp, sp, cy, sy = math.cos(r), math.sin(r), math.cos(p), math.sin(p), math.cos(y), math.sin(y)
+    Rx = np.array([[1, 0, 0], [0, cr, -sr], [0, sr, cr]])
+    Ry = np.array([[cp, 0, sp], [0, 1, 0], [-sp, 0, cp]])
+    Rz = np.array([[cy, -sy, 0], [sy, cy, 0], [0, 0, 1]])
+    return Rz @ Ry @ Rx
+
+
+def test_dome_facing_from_urdf_joint():
+    # current lidar_joint (dome along +x, the sensor-side front) and the same mount turned around
+    assert not dashboard.dome_faces_rear(_rpy(1.868822, -1.219393, 1.308338))
+    assert dashboard.dome_faces_rear(_rpy(1.868822, -1.219393, -1.833255))
+
+
+def test_lidar_side_frame_puts_seen_points_ahead():
+    behind = np.array([[-1.5, 0.3, 0.2]])        # seen by a rear-facing dome, in base_footprint
+    out = dashboard.to_lidar_side_frame(behind, tf_rear=True)
+    np.testing.assert_allclose(out, [[1.5, -0.3, 0.2]])
+    np.testing.assert_allclose(dashboard.to_lidar_side_frame(behind, tf_rear=False), behind)
+
+
+def test_frame_conflict_only_when_urdf_rear_and_no_flip():
+    assert dashboard.frame_conflict(True, faces_rear=False)
+    assert not dashboard.frame_conflict(True, faces_rear=True)
+    assert not dashboard.frame_conflict(False, faces_rear=True)
+    assert not dashboard.frame_conflict(False, faces_rear=False)
+
+
+def test_flip_follows_the_running_controller():
+    assert dashboard.resolve_flip(True) is False       # sensor-side front: drive straight
+    assert dashboard.resolve_flip(False) is True       # old controller: rotate 180 deg
+    assert dashboard.resolve_flip(None) is None        # no answer: refuse autonomy
+    assert dashboard.resolve_flip(None, force=True) is True
+    assert dashboard.resolve_flip(True, force=True) is True

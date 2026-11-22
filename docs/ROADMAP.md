@@ -21,7 +21,7 @@ Goal: autonomous driving on one localization chain: **Point-LIO** (LiDAR-inertia
 | 1 | Environment: dependencies (incl. `rtabmap_ros`) in the Docker rover image; workspace builds; tests run in the container | none | `scripts/run_tests.sh` passes inside `intel-sys-rover` |
 | 2 | Drive: STM32-only bringup; teleop; check whether the STM32 can report encoder speeds | STM32 | Robot drives 1 m out and back; encoder feedback available, or ruled out |
 | 3 | Warmup and tests: `preflight.sh`, `warmup.sh`, test tiers, bag recording | STM32 for T4 | Warmup reports PASS/FAIL/SKIP per device |
-| 4 | Frames: L2 tilt done (gravity-measured `lidar_joint`, 2026-11-21). Remaining: settle the facing direction (it faces the rear) in the URDF, remove the dashboard's 180° flip, re-check Point-LIO extrinsics | LiDAR | L2 cloud lines up with `base_footprint` in Foxglove; dashboard sector tests pass without `DASHBOARD_LIDAR_FACES_REAR` |
+| 4 | Frames: L2 tilt done (gravity-measured `lidar_joint`, 2026-11-21). Facing settled 2026-11-22 (front = sensor side, `forward_is_sensor_side`; the dashboard flip now follows the controller). Remaining: re-check Point-LIO extrinsics with the mechanical offsets | LiDAR | L2 cloud lines up with `base_footprint` in Foxglove; dashboard sector tests pass without `DASHBOARD_LIDAR_FACES_REAR` |
 | 5 | LIO: Point-LIO on the real L2 with its built-in IMU; owns `/odom` and `odom→base_footprint` | LiDAR | Drift bound met on a 10 m loop |
 | 6 | SLAM: RTAB-Map, LiDAR-only (ICP), with Point-LIO as its odometry; owns `map→odom`; 3D map + 2D grid; database under `/data` | LiDAR (bags OK for development) | A building loop closes; relaunch in localization mode re-localizes on the saved map |
 | 7 | Navigation: Nav2 global costmap on RTAB-Map's `/map`, local costmap on `odom` with STVL; dashboard explorer and waypoints use the real pose and send goals to Nav2 | STM32 + LiDAR | Scripted waypoint run with recovery passes |
@@ -61,7 +61,7 @@ Next:
 - [ ] Without a camera there is no global relocalization: the robot must start at the map origin or be given `/rtabmap/initialpose`. Add a "set pose" control to the dashboard, or a fixed home spot.
 - [ ] Guard against Point-LIO divergence (e.g. reset when its speed exceeds what the robot can do), since one jolt plus an IMU gap at start-up was enough.
 - [ ] Measure height drift properly: record a drive that ends exactly where it started (floor mark), on level ground.
-- [ ] Settle which way the L2 dome faces (URDF yaw) from a bag with a known direction, or the mechanical drawings.
+- [x] Which way the sensors face: both the L2 and the D435 sit on what the motor convention called the back, facing out (confirmed by Aahil 2026-11-22). The robot's front is now that side (`forward_is_sensor_side`, see Decisions); the URDF already had the sensors at +x.
 
 ## Decisions
 
@@ -72,6 +72,7 @@ Next:
 - Point-LIO uses the L2's built-in IMU (`/lidar/imu`), so it does not depend on the STM32 IMU.
 - Wheel odometry is not fused into anything until it comes from encoder feedback; today's version is derived from commands.
 - Each stack runs in its own container, defined as a compose service (see [Infrastructure](#infrastructure)).
+- **The front is the sensor side** (2026-11-22). The L2 and the D435 sit together on one end, facing out; that end is +x everywhere: `/cmd_vel` (teleop, dashboard, Nav2), wheel odometry and the URDF. The STM32 firmware is unchanged; `mecanum_controller` and `odom_publisher` negate `vx`, `vy` (`forward_is_sensor_side`, one launch argument in `stm32.launch.py`). The dashboard reads the controller's setting and only flips autonomy for an older controller. Replaces `DASHBOARD_LIDAR_FACES_REAR`.
 
 ## Phase 1 details: dependencies
 
@@ -123,7 +124,7 @@ Reactive exploration drives the rover around so `record_data.sh` captures the sc
 
 ### Exploration TODO (priority order)
 
-- [ ] **Fix the URDF LiDAR orientation (E7, Phase 4).** Tilt done 2026-11-21 (gravity-measured); the facing direction remains. Either correct `lidar_joint` to the measured mount (the seen half then becomes base_footprint `-x`, and the dashboard sector math and the flip need updating together), or redefine the rover's front as the LiDAR side. Pick one so there is a single source of truth, then remove `DASHBOARD_LIDAR_FACES_REAR` and re-check the Point-LIO extrinsics.
+- [x] **Fix the URDF LiDAR orientation (E7, Phase 4).** Done 2026-11-22 by redefining the rover's front as the sensor side (option two above): tilt from gravity, the URDF keeps the dome at +x, `mecanum_controller`/`odom_publisher` flip the motor convention (`forward_is_sensor_side`), and the dashboard follows the running controller instead of `DASHBOARD_LIDAR_FACES_REAR`. Re-check the Point-LIO extrinsics once the mechanical offsets arrive.
 - [ ] **Link-loss stop for autonomy (E9).** Require a heartbeat from the operator page (or the Mac) while `live`; drop to `off` and publish zeros if it lapses for about 1 s.
 - [ ] **Filter sector distances (E3).** Median over the last 3–5 clouds plus hysteresis on the SCAN/TURN thresholds. Check the 0.2 m front-left return against the chassis and enlarge the body mask if it is self-hit.
 - [ ] **First recorded live run of the coverage-aware explorer (E12).** 3–5 min with `./record_data.sh -s local`; save `autonomy.stats` to `results/`; tune `look_every_m`, `look_speed`, `scan_len`, and `scan_standoff` from it.

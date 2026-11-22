@@ -41,7 +41,9 @@ import tf2_ros
 from geometry_msgs.msg import Twist
 from intel_sys_interfaces.msg import MotorsState
 from nav_msgs.msg import Odometry
-from rcl_interfaces.msg import Log
+from rcl_interfaces.msg import Log, ParameterType
+from rcl_interfaces.srv import GetParameters
+from rclpy.executors import SingleThreadedExecutor
 from rclpy.node import Node
 from rclpy.qos import qos_profile_sensor_data
 from sensor_msgs.msg import Image, Imu, PointCloud2
@@ -69,10 +71,16 @@ CORRIDOR_HALF = 0.20    # half-width of the forward and rear corridors
 SIDE_X = 0.35           # half-length of the side sectors
 MIN_Z, MAX_Z = 0.05, 0.60
 MIN_POINTS = 3          # use the 3rd-closest return, not a single stray point
-# The LiDAR's view (base_footprint +x per TF) points at the rover's physical rear: a +vx
-# /cmd_vel drives away from what it sees. Autonomy decides in the LiDAR's frame, so its
-# command is rotated 180 deg before publishing. Manual drive is not affected.
-LIDAR_FACES_REAR = os.environ.get('DASHBOARD_LIDAR_FACES_REAR', '1') == '1'
+# Which way autonomy must drive to go toward what the LiDAR sees.
+# Since 2026-11-22 the robot's front (+x in /cmd_vel, odometry and the URDF) is the sensor
+# side: mecanum_controller's forward_is_sensor_side, default true. Older controllers drive
+# +vx toward the other end, so autonomy, which decides in a frame whose +x is the side the
+# LiDAR sees, must rotate its command 180 deg for them. The dashboard asks the running
+# controller (parameter forward_is_sensor_side; absent on old builds = old front) and
+# refuses autonomy until it knows. DASHBOARD_LIDAR_FACES_REAR=1/0 forces the flip on/off.
+_FORCE_FLIP = os.environ.get('DASHBOARD_LIDAR_FACES_REAR', 'auto').strip().lower()
+FORCE_FLIP = {'1': True, 'true': True, '0': False, 'false': False}.get(_FORCE_FLIP)
+CONTROLLER_NODE = os.environ.get('DASHBOARD_CONTROLLER_NODE', '/mecanum_velocity_controller')
 LIDAR_TOPIC = '/lidar/points_raw'
 MAX_WAYPOINTS = 50
 MAX_COORD = 100.0  # m from the odometry origin
@@ -104,12 +112,44 @@ def clamp(v, lim):
     return max(-lim, min(lim, v))
 
 
-def autonomy_to_cmd_vel(vx, vy, wz, faces_rear=LIDAR_FACES_REAR):
+def resolve_flip(controller_sensor_front, force=None):
+    """Whether to rotate autonomy commands 180 deg; None if unknown (refuse autonomy).
+
+    controller_sensor_front: True (sensor-side front), False (old motor-convention front,
+    including controllers without the parameter), None (no answer from the controller).
+    """
+    if force is not None:
+        return force
+    if controller_sensor_front is None:
+        return None
+    return not controller_sensor_front
+
+
+def autonomy_to_cmd_vel(vx, vy, wz, faces_rear=False):
     """Map an explorer command (LiDAR frame) to /cmd_vel. A 180 deg yaw flips vx, vy; wz is unchanged."""
     return (-vx, -vy, wz) if faces_rear else (vx, vy, wz)
 
 
-def lidar_pose(odom, faces_rear=LIDAR_FACES_REAR):
+def dome_faces_rear(R_base_lidar):
+    """True if the LiDAR's dome axis (its +z) points to base_footprint -x per the URDF."""
+    return float(np.asarray(R_base_lidar)[0, 2]) < 0.0
+
+
+def to_lidar_side_frame(xyz, tf_rear):
+    """base_footprint points -> the explorer frame (+x = the side the LiDAR sees)."""
+    if not tf_rear:
+        return xyz
+    out = np.array(xyz, dtype=np.float64, copy=True)
+    out[:, :2] *= -1.0
+    return out
+
+
+def frame_conflict(tf_rear, faces_rear):
+    """URDF has the dome facing the rear but the dashboard is set to front: unsafe."""
+    return bool(tf_rear) and not faces_rear
+
+
+def lidar_pose(odom, faces_rear=False):
     """Odometry (x, y, yaw, ...) as the explorer's pose: yaw of the LiDAR's forward, or None."""
     if odom is None:
         return None
@@ -148,6 +188,9 @@ class State:
         self.ap_cmd = (0.0, 0.0, 0.0)  # (vx, vy, wz) of the last decision
         self.ap_stats = {}         # explorer coverage stats for the current run
         self.dists = {'front': math.inf, 'rear': math.inf, 'left': math.inf, 'right': math.inf}
+        self.frame_conflict = False  # URDF has the dome facing -x but no flip: unsafe
+        self.controller_front = None  # True sensor side, False old front, None unknown
+        self.flip = resolve_flip(None, FORCE_FLIP)  # rotate autonomy commands 180 deg; None = unknown
         self.lidar_t = None        # monotonic time of last usable cloud
         # map and point-to-point waypoints (odometry frame)
         self.map = OccupancyMap(window_s=CLOUD_WINDOW_S)
@@ -206,6 +249,8 @@ class DashboardNode(Node):
         self.create_subscription(UInt16, '/battery', lambda m: self._safe(lambda: self._battery(m)), 10)
         self.create_subscription(Log, '/rosout', lambda m: self._safe(lambda: self._log(m)), 100)
         self.create_timer(1.0 / TICK_HZ, lambda: self._safe(self._tick))
+        self.front_client = self.create_client(GetParameters, CONTROLLER_NODE.rstrip('/') + '/get_parameters')
+        self.create_timer(2.0, lambda: self._safe(self._query_front))
 
     # ---- helpers ----------------------------------------------------------
     def _safe(self, fn):
@@ -269,10 +314,19 @@ class DashboardNode(Node):
         xyz = np.column_stack([pts['x'], pts['y'], pts['z']]).astype(np.float64)
         if xyz.size == 0:
             return
+        q = tf.transform.rotation
+        tf_rear = dome_faces_rear(_quat_to_matrix(q.x, q.y, q.z, q.w))
         xyz = _to_frame(xyz, tf)
         R, tilt = self._gravity_rotation()
         if R is not None:
             xyz = xyz @ R.T         # z is now true vertical
+        xyz = to_lidar_side_frame(xyz, tf_rear)   # +x is now the side the LiDAR sees
+        with self.s.lock:
+            flip = self.s.flip
+        conflict = flip is not None and frame_conflict(tf_rear, flip)
+        if conflict:
+            self._warn_once('URDF has the LiDAR facing -x but the controller drives +x toward it; '
+                            'autonomy refused')
         far = np.linalg.norm(xyz, axis=1) < CLOUD_RANGE
         body3 = (np.abs(xyz[:, 0]) < BODY_X) & (np.abs(xyz[:, 1]) < BODY_Y)
         cloud = decimate(xyz[far & ~body3], CLOUD_MAX).astype(np.float32)
@@ -280,14 +334,15 @@ class DashboardNode(Node):
             self.s.cloud = cloud
             self.s.cloud_t = time.monotonic()
             self.s.tilt_deg = tilt
-            pose = lidar_pose(self.s.odom)
+            self.s.frame_conflict = conflict
+            pose = lidar_pose(self.s.odom, bool(self.s.flip))
             if pose is not None:
                 self.s.cloud_acc.add(time.monotonic(), base_to_odom(decimate(cloud, CLOUD_ADD), pose))
         z = xyz[:, 2]
         keep = (z > MIN_Z) & (z < MAX_Z) & ~((np.abs(xyz[:, 0]) < BODY_X) & (np.abs(xyz[:, 1]) < BODY_Y))
         x, y = xyz[keep, 0], xyz[keep, 1]
         with self.s.lock:
-            pose = lidar_pose(self.s.odom)
+            pose = lidar_pose(self.s.odom, bool(self.s.flip))
             if pose is not None:
                 self.s.map.add_points(pose, x, y)
         dists = {
@@ -299,6 +354,25 @@ class DashboardNode(Node):
         with self.s.lock:
             self.s.dists = dists
             self.s.lidar_t = time.monotonic()
+
+    def _query_front(self):
+        """Ask mecanum_controller which end is the front; updates State.flip."""
+        if not self.front_client.service_is_ready():
+            with self.s.lock:
+                self.s.controller_front = None
+                self.s.flip = resolve_flip(None, FORCE_FLIP)
+            return
+        req = GetParameters.Request()
+        req.names = ['forward_is_sensor_side']
+        self.front_client.call_async(req).add_done_callback(lambda f: self._safe(lambda: self._on_front(f)))
+
+    def _on_front(self, future):
+        values = future.result().values
+        # Not declared (old controller) -> PARAMETER_NOT_SET -> old motor-convention front.
+        sensor_front = bool(values and values[0].type == ParameterType.PARAMETER_BOOL and values[0].bool_value)
+        with self.s.lock:
+            self.s.controller_front = sensor_front
+            self.s.flip = resolve_flip(sensor_front, FORCE_FLIP)
 
     def _gravity_rotation(self):
         """(R, tilt_deg): R takes gravity-up to +z in base_footprint, or (None, None) if unknown."""
@@ -338,6 +412,16 @@ class DashboardNode(Node):
             lidar_t = self.s.lidar_t
             odom = self.s.odom
             nav_mode = self.s.nav_mode
+            conflict = self.s.frame_conflict
+            flip = self.s.flip
+
+        if (conflict or flip is None) and (mode == 'live' or nav_mode == 'live'):
+            with self.s.lock:
+                self.s.ap_mode = 'off' if mode == 'live' else self.s.ap_mode
+                self.s.nav_mode = 'off' if nav_mode == 'live' else self.s.nav_mode
+                self.s.moving = False
+            self._publish(0.0, 0.0)
+            return
 
         if estop:
             with self.s.lock:
@@ -351,13 +435,13 @@ class DashboardNode(Node):
             age = None if lidar_t is None else now - lidar_t
             state, vx, vy, wz = self.explorer.decide(now, dists['front'], dists['rear'],
                                                      dists['left'], dists['right'], age,
-                                                     lidar_pose(odom))
+                                                     lidar_pose(odom, bool(flip)))
             with self.s.lock:
                 self.s.ap_state = state
                 self.s.ap_cmd = (vx, vy, wz)
                 self.s.ap_stats = self.explorer.stats()
             if mode == 'live':
-                cvx, cvy, cwz = autonomy_to_cmd_vel(vx, vy, wz)
+                cvx, cvy, cwz = autonomy_to_cmd_vel(vx, vy, wz, bool(flip))
                 self._publish(cvx, cwz, cvy)
                 with self.s.lock:
                     self.s.moving = (vx != 0.0 or vy != 0.0 or wz != 0.0)
@@ -366,12 +450,12 @@ class DashboardNode(Node):
         if nav_mode in ('live', 'dry'):
             age = None if lidar_t is None else now - lidar_t
             with self.s.lock:
-                state, vx, wz = self.nav.step(now, lidar_pose(odom), dists['front'], age)
+                state, vx, wz = self.nav.step(now, lidar_pose(odom, bool(flip)), dists['front'], age)
                 self.s.nav_state = state
                 self.s.nav_cmd = (vx, wz)
                 self.s.nav_stats = self.nav.stats()
             if nav_mode == 'live':
-                cvx, cvy, cwz = autonomy_to_cmd_vel(vx, 0.0, wz)
+                cvx, cvy, cwz = autonomy_to_cmd_vel(vx, 0.0, wz, bool(flip))
                 self._publish(cvx, cwz, cvy)
                 with self.s.lock:
                     self.s.moving = (vx != 0.0 or wz != 0.0)
@@ -551,6 +635,11 @@ def make_handler(state, token, node, view_token=''):
                         return self._send(409, {'error': 'e-stop engaged; reset first'})
                     if lidar_age is None or lidar_age > 0.5:
                         return self._send(409, {'error': 'no fresh LiDAR data'})
+                    if state.flip is None:
+                        return self._send(409, {'error': 'front direction unknown: is mecanum_controller running?'})
+                    if state.frame_conflict:
+                        return self._send(409, {'error': 'URDF has the LiDAR facing -x but the controller '
+                                                         'drives +x toward it'})
                 node.set_autonomy(mode)
                 print(f'[dashboard] autonomy -> {mode}', flush=True)
                 return self._send(200, {'ok': True, 'mode': mode})
@@ -580,6 +669,11 @@ def make_handler(state, token, node, view_token=''):
                         return self._send(409, {'error': 'no odometry'})
                     if lidar_age is None or lidar_age > 0.5:
                         return self._send(409, {'error': 'no fresh LiDAR data'})
+                    if state.flip is None:
+                        return self._send(409, {'error': 'front direction unknown: is mecanum_controller running?'})
+                    if state.frame_conflict:
+                        return self._send(409, {'error': 'URDF has the LiDAR facing -x but the controller '
+                                                         'drives +x toward it'})
                 node.set_nav(mode)
                 print(f'[dashboard] waypoint path -> {mode}', flush=True)
                 return self._send(200, {'ok': True, 'mode': mode})
@@ -646,15 +740,17 @@ def status_payload(state):
                 'vx': state.ap_cmd[0],
                 'vy': state.ap_cmd[1],
                 'wz': state.ap_cmd[2],
-                'lidar_faces_rear': LIDAR_FACES_REAR,
+                'lidar_faces_rear': state.flip,
+                'controller_front': state.controller_front,
+                'frame_conflict': state.frame_conflict,
                 'stats': dict(state.ap_stats),
-                'cmd_vel': dict(zip(('vx', 'vy', 'wz'), autonomy_to_cmd_vel(*state.ap_cmd))),
+                'cmd_vel': dict(zip(('vx', 'vy', 'wz'), autonomy_to_cmd_vel(*state.ap_cmd, bool(state.flip)))),
                 'dists_m': dists,
                 'lidar_age_s': None if state.lidar_t is None else round(now - state.lidar_t, 2),
             },
             'nav': {'mode': state.nav_mode, 'state': state.nav_state,
                     'vx': state.nav_cmd[0], 'wz': state.nav_cmd[1],
-                    'cmd_vel': dict(zip(('vx', 'vy', 'wz'), autonomy_to_cmd_vel(state.nav_cmd[0], 0.0, state.nav_cmd[1]))),
+                    'cmd_vel': dict(zip(('vx', 'vy', 'wz'), autonomy_to_cmd_vel(state.nav_cmd[0], 0.0, state.nav_cmd[1], bool(state.flip)))),
                     'stats': dict(state.nav_stats)},
             'battery_mv': state.battery_mv,
             'odom': None if odom is None else {'x': odom[0], 'y': odom[1], 'yaw': odom[2],
@@ -701,7 +797,8 @@ def cloud_payload(state):
         buffer_points = len(state.cloud_acc)
         raw = state.cloud
         tilt = state.tilt_deg
-    pose = lidar_pose(odom)
+        flip = bool(state.flip)
+    pose = lidar_pose(odom, flip)
     accumulated = pose is not None and acc.shape[0] > 0
     arr = raw
     if accumulated:
@@ -726,7 +823,7 @@ def map_payload(state, node):
     with state.lock:
         snap = state.map.snapshot()
         odom = state.odom
-        pose = lidar_pose(odom)
+        pose = lidar_pose(odom, bool(state.flip))
         snap['pose'] = None if pose is None else {
             'x': odom[0], 'y': odom[1], 'yaw_odom': odom[2], 'yaw_lidar': pose[2]}
         snap['waypoints'] = [[x, y] for x, y in node.nav.points]
@@ -746,15 +843,19 @@ def main():
     rclpy.init()
     node = DashboardNode(state)
 
+    executor = SingleThreadedExecutor()
+    executor.add_node(node)
+
     def _spin():
         try:
-            rclpy.spin(node)
+            executor.spin()
         except Exception as e:  # noqa: BLE001
             with state.lock:
                 state.spin_error = repr(e)
                 state.ap_mode = 'off'
             print(f'[dashboard] ROS executor died: {e!r}', flush=True)
-    threading.Thread(target=_spin, daemon=True).start()
+    spin_thread = threading.Thread(target=_spin, daemon=True)
+    spin_thread.start()
 
     def _on_term(signum, frame):
         raise KeyboardInterrupt
@@ -776,6 +877,10 @@ def main():
         time.sleep(0.3)
         httpd.server_close()
         try:
+            # Stop spinning before destroying the node: destroying it under a running executor
+            # (with a parameter request in flight) aborted the process.
+            executor.shutdown(timeout_sec=1.0)
+            spin_thread.join(timeout=2.0)
             node.destroy_node()
             rclpy.shutdown()
         except Exception:  # noqa: BLE001
@@ -1028,7 +1133,9 @@ async function refresh(){
   ['Off','Dry','Live'].forEach(n => document.getElementById('ap'+n).classList.toggle('on', a.mode === n.toLowerCase()));
   document.getElementById('apState').innerHTML =
     `mode <b>${a.mode}</b> · state <b>${a.state}</b> · cmd vx ${fmt(a.vx,3)} vy ${fmt(a.vy,3)} m/s, wz ${fmt(a.wz,2)} rad/s (LiDAR frame)` +
-    (a.lidar_faces_rear ? ' · <span class="warn">LiDAR faces rear: /cmd_vel vx, vy flipped</span>' : '') +
+    (a.lidar_faces_rear === null ? ' · <span class="warn">front direction unknown (mecanum_controller not answering): autonomy refused</span>'
+      : a.lidar_faces_rear ? ' · <span class="warn">controller uses the old front: autonomy /cmd_vel vx, vy flipped</span>' : '') +
+    (a.frame_conflict ? ' · <span class="warn">URDF has the LiDAR facing -x but the controller drives +x toward it: autonomy refused</span>' : '') +
     (a.mode === 'dry' ? ' <span class="warn">(dry: not publishing)</span>' : '');
   const d = a.dists_m;
   const n = s.nav, ns = n.stats || {};

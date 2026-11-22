@@ -192,7 +192,9 @@
   <!-- IMU -->
   <link name="imu_link"/>
   <joint name="imu_joint" type="fixed">
-    <origin xyz="0.0 0.0 0.0867" rpy="0 0 ${-pi/2}"/>
+    <!-- STM32 board IMU. Its yaw was -pi/2 in the motor-convention frame; the sensor-side
+         front turns base_link 180 deg about z, so it is +pi/2 here. -->
+    <origin xyz="0.0 0.0 0.0867" rpy="0 0 ${pi/2}"/>
     <parent link="base_link"/>
     <child link="imu_link"/>
   </joint>
@@ -213,7 +215,10 @@
     </visual>
   </link>
   <joint name="lidar_joint" type="fixed">
-    <!-- lidar tilt fixed from measured gravity on 2026-11-21, previously rpy 0 -pi/2 pi, yaw unchanged -->
+    <!-- Tilt from measured gravity (2026-11-21). Front convention (2026-11-22) +x is the
+         sensor side. The L2 and the D435 sit together on that end with the L2 dome facing out
+         along +x, and mecanum_controller (forward_is_sensor_side) makes +vx drive that way.
+         Offsets are provisional until the mechanical team's measurements arrive. -->
     <origin xyz="0.0959 0.0 0.1284" rpy="1.868822 -1.219393 1.308338"/>
     <parent link="base_link"/>
     <child link="lidar_link"/>

@@ -7,6 +7,7 @@ from geometry_msgs.msg import Twist, TransformStamped, Quaternion
 from nav_msgs.msg import Odometry
 from tf2_ros import TransformBroadcaster
 from intel_sys_interfaces.msg import MotorsState
+from intel_sys_hardware.mecanum import forward_sign
 
 ODOM_POSE_COVARIANCE = [
     1e-3, 0.0, 0.0, 0.0, 0.0, 0.0,
@@ -35,7 +36,10 @@ def yaw_to_quaternion(yaw: float) -> Quaternion:
     return q
 
 class MecanumOdometryIntegrator:
-    def __init__(self, wheelbase=0.216, track_width=0.195, wheel_diameter=0.097):
+    def __init__(self, wheelbase=0.216, track_width=0.195, wheel_diameter=0.097, forward_sign=1.0):
+        # Same sign as the controller's (see mecanum.forward_sign): wheel speeds are in the
+        # motor convention, the published odometry is in the robot's (sensor-side) frame.
+        self.forward_sign = forward_sign
         self.L = wheelbase
         self.W = track_width
         self.r = wheel_diameter / 2.0
@@ -53,8 +57,8 @@ class MecanumOdometryIntegrator:
         w4 = rps4 * 2.0 * math.pi
 
         k = (self.L + self.W) / 2.0
-        self.vx = (self.r / 4.0) * (w1 + w2 + w3 + w4)
-        self.vy = (self.r / 4.0) * (-w1 + w2 + w3 - w4)
+        self.vx = self.forward_sign * (self.r / 4.0) * (w1 + w2 + w3 + w4)
+        self.vy = self.forward_sign * (self.r / 4.0) * (-w1 + w2 + w3 - w4)
         self.wz = (self.r / (4.0 * k)) * (-w1 - w2 + w3 + w4)
         return self.vx, self.vy, self.wz
 
@@ -92,6 +96,7 @@ class OdometryPublisher(Node):
         self.declare_parameter('motor_topic', 'set_motor')
         self.declare_parameter('cmd_vel_topic', 'cmd_vel')
         self.declare_parameter('rate_hz', 50.0)
+        self.declare_parameter('forward_is_sensor_side', True)
 
         wheelbase = self.get_parameter('wheelbase').value
         track_width = self.get_parameter('track_width').value
@@ -105,7 +110,8 @@ class OdometryPublisher(Node):
         rate_hz = self.get_parameter('rate_hz').value
 
         self.integrator = MecanumOdometryIntegrator(
-            wheelbase=wheelbase, track_width=track_width, wheel_diameter=wheel_diameter
+            wheelbase=wheelbase, track_width=track_width, wheel_diameter=wheel_diameter,
+            forward_sign=forward_sign(self.get_parameter('forward_is_sensor_side').value)
         )
 
         self.odom_pub = self.create_publisher(Odometry, odom_topic, 10)

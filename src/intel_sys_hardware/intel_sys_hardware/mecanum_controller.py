@@ -6,7 +6,7 @@ from rclpy.node import Node
 from geometry_msgs.msg import Twist
 from sensor_msgs.msg import JointState
 from intel_sys_interfaces.msg import MotorsState
-from intel_sys_hardware.mecanum import MecanumChassis
+from intel_sys_hardware.mecanum import MecanumChassis, forward_sign
 
 
 def is_cmd_vel_stale(last_ns: int, now_ns: int, timeout_s: float) -> bool:
@@ -41,6 +41,8 @@ class MecanumVelocityController(Node):
         self.declare_parameter('max_angular_z', 2.5)
         # Safety watchdog: zero the wheels if cmd_vel goes silent for this long.
         self.declare_parameter('cmd_vel_timeout', 0.5)
+        # Which end is the front for /cmd_vel: True = the sensor side (see mecanum.forward_sign).
+        self.declare_parameter('forward_is_sensor_side', True)
 
         wheelbase = self.get_parameter('wheelbase').value
         track_width = self.get_parameter('track_width').value
@@ -54,7 +56,9 @@ class MecanumVelocityController(Node):
         self.max_angular_z = self.get_parameter('max_angular_z').value
         self.cmd_vel_timeout = float(self.get_parameter('cmd_vel_timeout').value)
 
-        self.chassis = MecanumChassis(wheelbase=wheelbase, track_width=track_width, wheel_diameter=wheel_diameter)
+        sensor_front = bool(self.get_parameter('forward_is_sensor_side').value)
+        self.chassis = MecanumChassis(wheelbase=wheelbase, track_width=track_width, wheel_diameter=wheel_diameter,
+                                      forward_sign=forward_sign(sensor_front))
         self.motor_pub = self.create_publisher(MotorsState, motor_topic, 10)
         self.joint_state_pub = self.create_publisher(JointState, joint_state_topic, 10)
         self.create_subscription(Twist, cmd_vel_topic, self.cmd_vel_callback, 10)
@@ -67,7 +71,7 @@ class MecanumVelocityController(Node):
         # 20 Hz watchdog; the wheel command is zeroed once per stale episode.
         self.create_timer(0.05, self.watchdog_callback)
 
-        self.get_logger().info(f'Mecanum Velocity Controller started. Subscribed to {cmd_vel_topic}, publishing to {motor_topic} and {joint_state_topic}. cmd_vel timeout {self.cmd_vel_timeout:.2f}s.')
+        self.get_logger().info(f'Mecanum Velocity Controller started. Subscribed to {cmd_vel_topic}, publishing to {motor_topic} and {joint_state_topic}. cmd_vel timeout {self.cmd_vel_timeout:.2f}s. Front: {"sensor side" if sensor_front else "motor-convention front"}.')
 
     def watchdog_callback(self):
         # Nothing commanded yet: the bridge already starts with zero motor speed.

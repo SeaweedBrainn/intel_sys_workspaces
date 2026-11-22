@@ -132,6 +132,6 @@ Tokens live in `~/.config/robot-dashboard/` on the robot (`token` and `view_toke
 
 - **Start order matters.** Start the dashboard after the STM32 and LiDAR stacks, or restart it afterward. Under the zenoh middleware, subscribers do not always re-match after a publisher restarts (see the roadmap).
 - **Camera is off.** `/camera/image_raw` is at 0 Hz because no camera node is launched. Nothing in the dashboard depends on it.
-- **The rear is blind.** The LiDAR sees only the front half, and the dashboard flips its commands to match the mounting (`DASHBOARD_LIDAR_FACES_REAR`). Check the sector readings in dry mode before any live run.
+- **The front is the sensor side, and the rear is blind.** Since 2026-11-22, `+vx` (teleop "forward") drives toward the L2 and the D435; the switch is `forward_is_sensor_side` in `stm32.launch.py` (default true; false restores the old motor-convention front). Only the half the sensors face is seen. Check the sector readings in dry mode before any live run.
 - **Odometry drifts.** The map and waypoints are in the odometry frame. They are good for short runs only.
 - **Mecanum watchdog warnings.** While the dashboard is idle, the controller logs "cmd_vel stale … wheels commanded to zero" about every two seconds. That is the safety watchdog working.

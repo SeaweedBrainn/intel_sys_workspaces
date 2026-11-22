@@ -1,6 +1,6 @@
 import math
 import pytest
-from intel_sys_hardware.mecanum import MecanumChassis
+from intel_sys_hardware.mecanum import MecanumChassis, forward_sign
 
 def test_speed_to_rps():
     wheel_diameter = 0.097  # meters
@@ -52,3 +52,16 @@ def test_pure_rotation():
     assert pytest.approx(msg.data[1].rps, rel=1e-4) == -expected_rps
     assert pytest.approx(msg.data[2].rps, rel=1e-4) == -expected_rps
     assert pytest.approx(msg.data[3].rps, rel=1e-4) == -expected_rps
+
+
+def test_sensor_side_front_reverses_linear_motion_only():
+    motor = MecanumChassis(forward_sign=forward_sign(False))
+    sensor = MecanumChassis(forward_sign=forward_sign(True))
+    for vx, vy, wz in [(0.3, 0.0, 0.0), (0.0, 0.2, 0.0), (0.2, -0.1, 0.0)]:
+        a = [m.rps for m in sensor.compute_motor_speeds(vx, vy, wz).data]
+        b = [m.rps for m in motor.compute_motor_speeds(-vx, -vy, wz).data]
+        assert a == pytest.approx(b)
+    # turning in place is the same either way
+    a = [m.rps for m in sensor.compute_motor_speeds(0.0, 0.0, 0.8).data]
+    b = [m.rps for m in motor.compute_motor_speeds(0.0, 0.0, 0.8).data]
+    assert a == pytest.approx(b)

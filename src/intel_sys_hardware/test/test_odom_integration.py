@@ -89,3 +89,15 @@ def test_round_trip_chassis_speeds_to_odometry():
         assert pytest.approx(calc_vx, rel=1e-3, abs=1e-4) == target_vx
         assert pytest.approx(calc_vy, rel=1e-3, abs=1e-4) == target_vy
         assert pytest.approx(calc_wz, rel=1e-3, abs=1e-4) == target_wz
+
+
+def test_wheel_odometry_round_trips_through_the_controller_with_either_front():
+    from intel_sys_hardware.mecanum import MecanumChassis, forward_sign
+    for sensor_front in (False, True):
+        sign = forward_sign(sensor_front)
+        chassis = MecanumChassis(wheelbase=0.216, track_width=0.195, wheel_diameter=0.097, forward_sign=sign)
+        odom = MecanumOdometryIntegrator(wheelbase=0.216, track_width=0.195, wheel_diameter=0.097, forward_sign=sign)
+        m = chassis.compute_motor_speeds(0.25, -0.1, 0.4).data
+        # odom_publisher.motor_callback undoes the motor 3/4 polarity the same way
+        vx, vy, wz = odom.forward_kinematics(m[0].rps, m[1].rps, -m[2].rps, -m[3].rps)
+        assert (vx, vy, wz) == pytest.approx((0.25, -0.1, 0.4), rel=1e-6)

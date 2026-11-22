@@ -79,7 +79,9 @@ scripts/robot.sh up localization    # optional: Point-LIO + RTAB-Map, mapping a 
 scripts/robot.sh up navigation      # optional: also Nav2 on RTAB-Map's map
 ```
 
-Start localization with the robot standing still. To re-localize on the last saved map instead of mapping, use `SLAM_LOCALIZATION=true scripts/robot.sh up localization`; the database is `data/rtabmap.db`. `SLAM_CAMERA=true` adds the D435 to RTAB-Map once the camera runs.
+Start localization with the robot standing still. To re-localize on the last saved map instead of mapping, use `SLAM_LOCALIZATION=true scripts/robot.sh up localization`; the database is `data/rtabmap.db`, and starting a new mapping session keeps the previous one as `data/rtabmap_<date>.db`. `SLAM_CAMERA=true` adds the D435 to RTAB-Map once the camera runs. `scripts/robot.sh up navigation` never restarts a running localization.
+
+Also useful: `scripts/robot.sh up foxglove` (Foxglove bridge on the Tailscale address, port 8765), `scripts/record_bag.sh <name>` (records into `bags/` until Ctrl-C) and `scripts/robot.sh ros2 <args>` (the `ros2` CLI on the robot's middleware).
 
 The drivers, the robot description and the dashboard restart on their own after a crash or a reboot. Localization and navigation do not: a restart would re-anchor odometry wherever the robot is, and a mapping restart wipes the map.
 

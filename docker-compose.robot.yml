@@ -5,6 +5,7 @@
 #   scripts/dashboard.sh                   # dashboard (supplies its tokens), after the drivers
 #   scripts/robot.sh up localization       # + Point-LIO and RTAB-Map (mapping)
 #   scripts/robot.sh up navigation         # + Nav2 on RTAB-Map's /map
+#   scripts/robot.sh up foxglove           # Foxglove bridge on the Tailscale address, port 8765
 #   scripts/robot.sh ps | logs -f <service> | stop <service> | down
 #
 # Drivers and the dashboard restart on their own after a crash or reboot.
@@ -69,6 +70,7 @@ services:
       slam_camera:=${SLAM_CAMERA:-false}
     profiles: [localization, navigation]
     restart: "no"
+    stop_grace_period: 60s   # RTAB-Map writes the map database on shutdown
 
   navigation:
     <<: *robot
@@ -78,6 +80,18 @@ services:
       - localization
     command: ros2 launch intel_sys_navigation navigation.launch.py slam:=true
     profiles: [navigation]
+    restart: "no"
+
+  foxglove:
+    <<: *robot
+    container_name: foxglove
+    # scripts/robot.sh up foxglove binds it to the Tailscale address. Clients can
+    # publish (e.g. Nav2 goals), so it is not left on every interface.
+    command: >
+      ros2 run foxglove_bridge foxglove_bridge --ros-args
+      -p address:=${FOXGLOVE_ADDRESS:-127.0.0.1} -p port:=8765
+      -p send_buffer_limit:=100000000
+    profiles: [foxglove]
     restart: "no"
 
   dashboard:

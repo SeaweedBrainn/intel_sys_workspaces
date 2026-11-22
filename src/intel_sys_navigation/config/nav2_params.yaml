@@ -304,6 +304,23 @@ behavior_server:
     min_rotational_vel: 0.4
     rotational_acc_lim: 3.2
 
+velocity_smoother:
+  ros__parameters:
+    use_sim_time: false
+    # Mecanum: lateral (y) must be allowed here too. Nav2's defaults clamp vy to
+    # 0, which silently drops DWB's strafing and lets the robot drift off its plan.
+    smoothing_frequency: 20.0
+    scale_velocities: false
+    feedback: "OPEN_LOOP"
+    max_velocity: [0.5, 0.5, 1.5]
+    min_velocity: [-0.5, -0.5, -1.5]
+    max_accel: [2.5, 2.5, 3.2]
+    max_decel: [-2.5, -2.5, -3.2]
+    odom_topic: "/odom"
+    odom_duration: 0.1
+    deadband_velocity: [0.0, 0.0, 0.0]
+    velocity_timeout: 1.0
+
 robot_state_publisher:
   ros__parameters:
     use_sim_time: false

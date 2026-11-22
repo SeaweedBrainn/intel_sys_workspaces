@@ -14,13 +14,14 @@ def slam_overlay(params):
 
     The global costmap moves to the map frame and takes RTAB-Map's grid as a
     static layer, with the live cloud (STVL) on top for obstacles the map does
-    not have yet. The local costmap, controller and behaviors stay in odom.
+    not have yet. It stays a rolling window around the robot. The local costmap, controller and behaviors stay in odom.
     """
     gc = params['global_costmap']['global_costmap']['ros__parameters']
     gc['global_frame'] = 'map'
-    gc['rolling_window'] = False
-    for key in ('width', 'height'):
-        gc.pop(key, None)  # sized from /map
+    # Keep the rolling window (width/height from the base file). A static
+    # costmap shrinks to RTAB-Map's grid, which only covers what has been seen,
+    # so goals in unexplored space would be "off the costmap" and never plan.
+    gc['rolling_window'] = True
     gc['plugins'] = ['static_layer', 'stvl_layer', 'inflation_layer']
     gc['static_layer'] = {
         'plugin': 'nav2_costmap_2d::StaticLayer',

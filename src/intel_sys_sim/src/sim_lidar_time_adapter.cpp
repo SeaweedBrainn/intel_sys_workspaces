@@ -1,7 +1,9 @@
 #include <rclcpp/rclcpp.hpp>
 #include <sensor_msgs/msg/point_cloud2.hpp>
 #include <sensor_msgs/point_cloud2_iterator.hpp>
+#include <algorithm>
 #include <cmath>
+#include <random>
 
 
 
@@ -11,10 +13,17 @@ public:
     this->declare_parameter<std::string>("input_topic", "/lidar/points_sim");
     this->declare_parameter<std::string>("output_topic", "/lidar/points_raw");
     this->declare_parameter<double>("scan_period", 0.1);  // 10 Hz
+    // Keep a random subset of at most this many returns per scan (0 = all).
+    // Gazebo's gpu_lidar fires the same fixed ray grid every scan, so a sparse
+    // grid leaves the map made of thin ring curves that Point-LIO sticks to.
+    // A dense grid randomly thinned to the real sensor's point count gives the
+    // real density with a non-repeating pattern, like the L2.
+    this->declare_parameter<int>("max_points", 0);
 
     std::string input_topic = this->get_parameter("input_topic").as_string();
     std::string output_topic = this->get_parameter("output_topic").as_string();
     scan_period_ = static_cast<float>(this->get_parameter("scan_period").as_double());
+    max_points_ = this->get_parameter("max_points").as_int();
 
     rclcpp::QoS sub_qos(10);
     sub_qos.best_effort();
@@ -29,8 +38,8 @@ public:
         input_topic, sub_qos,
         std::bind(&SimLidarTimeAdapter::pointCloudCallback, this, std::placeholders::_1));
 
-    RCLCPP_INFO(this->get_logger(), "Sim LiDAR Time Adapter started: %s -> %s (period: %.2fs)",
-                input_topic.c_str(), output_topic.c_str(), scan_period_);
+    RCLCPP_INFO(this->get_logger(), "Sim LiDAR Time Adapter started: %s -> %s (period: %.2fs, max_points: %ld)",
+                input_topic.c_str(), output_topic.c_str(), scan_period_, static_cast<long>(max_points_));
   }
 
 private:
@@ -122,6 +131,18 @@ private:
       }
     }
 
+    if (max_points_ > 0 && valid_points.size() > static_cast<size_t>(max_points_)) {
+      // Partial Fisher-Yates: a uniform random subset in the first max_points_ slots.
+      for (size_t i = 0; i < static_cast<size_t>(max_points_); ++i) {
+        std::uniform_int_distribution<size_t> pick(i, valid_points.size() - 1);
+        std::swap(valid_points[i], valid_points[pick(rng_)]);
+      }
+      valid_points.resize(static_cast<size_t>(max_points_));
+      // Point-LIO expects points in time order within a scan.
+      std::sort(valid_points.begin(), valid_points.end(),
+                [](const auto &a, const auto &b) { return a.time < b.time; });
+    }
+
     auto out_msg = std::make_unique<sensor_msgs::msg::PointCloud2>();
     out_msg->header = msg->header;
     out_msg->height = 1;
@@ -169,6 +190,8 @@ private:
   rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr sub_;
   rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr pub_;
   float scan_period_{0.1f};
+  int64_t max_points_{0};
+  std::mt19937 rng_{std::random_device{}()};
 };
 
 int main(int argc, char **argv) {

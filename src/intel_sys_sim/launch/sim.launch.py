@@ -4,6 +4,7 @@ from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription, SetE
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration, PathJoinSubstitution, PythonExpression
 from launch_ros.actions import Node
+from launch_ros.parameter_descriptions import ParameterValue
 from launch_ros.substitutions import FindPackageShare
 
 def generate_launch_description():
@@ -22,6 +23,13 @@ def generate_launch_description():
     y_arg = DeclareLaunchArgument('y', default_value='0.0', description='Spawn Y position')
     z_arg = DeclareLaunchArgument('z', default_value='0.05', description='Spawn Z position')
     yaw_arg = DeclareLaunchArgument('yaw', default_value='0.0', description='Spawn Yaw orientation')
+    max_points_arg = DeclareLaunchArgument(
+        'lidar_max_points', default_value='6400',
+        description='Random subset of returns kept per scan (0 = all); 6400 matches the L2 (64k pts/s) at 10 Hz')
+    scan_period_arg = DeclareLaunchArgument(
+        'lidar_scan_period', default_value='0.001',
+        description='Per-point time spread the adapter synthesizes [s]. Gazebo captures a scan in one '
+                    'instant, so a real-looking 0.1 s spread biases Point-LIO ~7% short; 0 freezes it')
 
     world = LaunchConfiguration('world')
     headless = LaunchConfiguration('headless')
@@ -89,7 +97,8 @@ def generate_launch_description():
         parameters=[{
             'input_topic': '/lidar/points_sim',
             'output_topic': '/lidar/points_raw',
-            'scan_period': 0.1,
+            'scan_period': ParameterValue(LaunchConfiguration('lidar_scan_period'), value_type=float),
+            'max_points': ParameterValue(LaunchConfiguration('lidar_max_points'), value_type=int),
             'use_sim_time': use_sim_time
         }]
     )
@@ -104,6 +113,8 @@ def generate_launch_description():
         y_arg,
         z_arg,
         yaw_arg,
+        scan_period_arg,
+        max_points_arg,
         gz_sim,
         robot_description_launch,
         spawn_robot,

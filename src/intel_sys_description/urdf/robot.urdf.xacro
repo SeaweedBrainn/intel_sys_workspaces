@@ -371,7 +371,10 @@
             <max_angle>3.14159265</max_angle>
           </horizontal>
           <vertical>
-            <samples>18</samples>
+            <!-- Dense fixed grid; sim_lidar_time_adapter thins it to the L2's
+                 ~6400 points/scan at random (lidar_max_points). 18 rings with no
+                 thinning left Point-LIO stuck in corridors (docs/ROADMAP.md). -->
+            <samples>64</samples>
             <resolution>1</resolution>
             <min_angle>-0.14</min_angle>
             <max_angle>1.53</max_angle>

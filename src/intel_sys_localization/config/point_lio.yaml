@@ -1,6 +1,11 @@
 /**:
   ros__parameters:
-    use_imu_as_input: true       # 250Hz High-Rate IMU Odometry Propagation
+    # Output model (Unitree's own L2 setting): IMU readings are measurements and
+    # velocity/acceleration are filter states. The input model (true) read 5-8% short
+    # on straight constant-speed legs in the sim and diverged on 2 of 4 real bags;
+    # the output model was within 0.3% and never diverged in 20 bag runs (ROADMAP).
+    # With false, satu_*, *_cov_output and imu_meas_* below are the IMU noise model.
+    use_imu_as_input: false
     prop_at_freq_of_imu: true
     init_map_size: 10
     point_filter_num: 1

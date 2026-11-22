@@ -57,8 +57,15 @@ The whole chain runs in Gazebo on the laptop (`intel-sys-sim`, amd64, rendering 
 
 **Odometry and camera comparisons (2026-11-22, overnight):**
 - **RTAB-Map's `icp_odometry` vs Point-LIO** (`odometry:=icp` in `localization.launch.py`): on the smooth bags (o1, o2) the two agree at 1 Hz (29.1 vs 28.5 m, 23.8 vs 23.2 m), but ICP jitters frame to frame. On the dome-up bag and the hallway ICP fails (128 and 760 impossible jumps; in long corridors it overshoots, resets and oscillates); Point-LIO has none. In the sim corridor ICP registers no forward motion at all. **Keep Point-LIO.**
-- **Point-LIO in the sim, straight 6-12 m legs at 0.3 m/s:** consistently 10-15% short (Gazebo truth checked, settling time irrelevant), yet within centimetres along the same corridor in the Nav2 laps. Unexplained.
-- **Point-LIO diverges intermittently:** the same bag and settings diverged in 1 of 3 runs (dome-up bag), and 2 of 4 from the orientation-1 start. Bag delivery was checked identical. See the divergence guard below.
+- **Point-LIO in the sim, straight 6-12 m legs at 0.3 m/s:** 5-15% short with the IMU-as-input model, yet within centimetres in the Nav2 laps. Solved, see below.
+- **Point-LIO diverged intermittently** with the input model: the same bag and settings diverged in 1 of 3 runs (dome-up bag), 2 of 4 from the orientation-1 start, and on o1 and o2 again in the comparison below.
+
+**Point-LIO switched to the output model (`use_imu_as_input: false`, 2026-11-22):**
+- Cause, from the Point-LIO source: with IMU as input, velocity is only corrected through its correlation with position (the LiDAR update has no velocity term) and process noise is scaled by dt², so the filter is overconfident in its speed. In a corridor the walls give no constraint along the direction of travel and at constant speed the accelerometer sees only gravity, so an early speed error persists. Turns move the error onto an axis the walls constrain, which is why the laps were accurate. Unitree's own L2 config (`point_lio_unilidar`) uses the output model.
+- Sim straight legs (4 x 12 m, clean runs): input model 5.5-8.5% short (two runs); output model 0.2%; input model with `acc_cov_input` 3.0 0.3-0.4%; Unitree's full config (output model, 0.4 m voxels, blind 0.5) 0.1-0.2%; `plane_thr` 0.05 worse (9-13%).
+- Real bags: the input model diverged on o1 and o2 (5 m/s speeds) and drew the dome-up bag's walls doubled; the output model gave single walls, never diverged in 16 runs (each short bag 4 times, including the shaky o1 start that diverged before) and ends within 0.3 m of Unitree's config on every bag. Real-time lag unchanged (0.02-0.03 s).
+- Nav2 mapping lap: passes (Point-LIO ends 0.5-1.5 cm from truth, SLAM within 8 cm). RTAB-Map's proximity closures vary from lap to lap with either model (0, 3 and 5 seen), so the test's "at least one closure" check can fail by chance.
+- Test-harness pitfall: `kill -INT` on `ros2 launch` from a script did not stop its nodes; stale `point_lio_frame_adapter`s anchored on an earlier run corrupted `/odom` in later runs. Kill every ROS process and check none are left between runs.
 - **Visual-only RTAB-Map** (D435 RGB-D): visual odometry loses track on these hand-carried bags (84-88% of frames with defaults, 37% with reset-on-loss and optical flow) and jumps at every reset; not usable as odometry. It does find visual loop closures (7 on the dome-up bag).
 - **Phase 8 wiring done:** `slam_camera:=true` adds the D435 to RTAB-Map (visual loop closures, visual + ICP registration, global relocalization). It runs alongside Point-LIO on the bags, but none of them returns to its start, so no loop closures of any kind happened and the benefit is still unmeasured.
 - **Sensor-side front** (see Decisions) is in, and the sim lap passes with the LiDAR and the D435 both in the costmaps (SLAM within 2.5 cm).
@@ -67,9 +74,9 @@ Next:
 - [ ] Rebuild the rover image and run the chain on the robot (`slam:=true`), robot still at start-up.
 - [ ] Point-LIO on the Jetson: measure CPU and lag with a bag played on the Orin NX.
 - [ ] Without a camera there is no global relocalization: the robot must start at the map origin or be given `/rtabmap/initialpose`. Add a "set pose" control to the dashboard, or a fixed home spot.
-- [ ] Guard against Point-LIO divergence (e.g. reset when its speed exceeds what the robot can do). It happens intermittently on the same data, not only after a jolt plus an IMU gap at start-up. High priority before unattended runs.
+- [ ] Guard against Point-LIO divergence (e.g. reset when its speed exceeds what the robot can do). None seen since the switch to the output model, but still wanted before unattended runs.
 - [ ] Record a loop that ends exactly where it started (floor mark), with the camera on: measures drift and shows whether the camera's loop closures (`slam_camera:=true`) help.
-- [ ] Find why Point-LIO is 10-15% short on straight constant-speed legs in the sim but not in the Nav2 laps.
+- [x] Point-LIO short on straight constant-speed legs: the IMU-as-input model; switched to the output model.
 - [ ] Deploy the sensor-side front on the Jetson: controller and dashboard together; tell the team teleop "forward" has flipped.
 - [ ] Measure height drift properly on level ground (same loop recording as above).
 - [x] Which way the sensors face: both the L2 and the D435 sit on what the motor convention called the back, facing out (confirmed by Aahil 2026-11-22). The robot's front is now that side (`forward_is_sensor_side`, see Decisions); the URDF already had the sensors at +x.

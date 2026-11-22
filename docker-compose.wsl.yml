@@ -1,0 +1,34 @@
+# GPU OpenGL for Gazebo/RViz on WSL2 (Docker Desktop).
+#
+# The NVIDIA overlay gives the container CUDA, but OpenGL still falls back to
+# llvmpipe (CPU). On WSL, GL reaches the GPU through Mesa's d3d12 driver, which
+# needs /dev/dxg and the WSL graphics libraries. run_docker.sh adds this file
+# automatically when it detects WSL; by hand:
+#   COMPOSE_FILE=docker-compose.yml:docker-compose.nvidia.yml:docker-compose.wsl.yml docker compose up -d intel-sys-sim
+# Check: glxinfo -B  ->  "D3D12 (NVIDIA ...)", Accelerated: yes
+# Measured on an RTX 4060 laptop (loop.sdf, full SLAM + Nav2 stack): sim LiDAR
+# 5-7 Hz -> 9 Hz, LiDAR IMU 130 -> 210 Hz, Gazebo CPU 350% -> 170%, RTF 1.0.
+x-wsl-gpu: &wsl-gpu
+  environment:
+    - DISPLAY=${DISPLAY:-}
+    - ROS_DOMAIN_ID=${ROS_DOMAIN_ID:-0}
+    - LD_LIBRARY_PATH=/usr/lib/wsl/lib
+    - GALLIUM_DRIVER=d3d12
+    - MESA_D3D12_DEFAULT_ADAPTER_NAME=${WSL_GPU_ADAPTER:-NVIDIA}
+    # d3d12 reports GL 4.2; Gazebo's Ogre 2 needs 4.3 (texture copy) and aborts
+    # in GL3PlusTextureGpu::copyTo without this. Works for headless sensors;
+    # the Gazebo GUI on d3d12 has not been tested.
+    - MESA_GL_VERSION_OVERRIDE=4.5
+    - MESA_GLSL_VERSION_OVERRIDE=450
+  volumes:
+    - ./:/workspaces/intel_sys
+    - /tmp/.X11-unix:/tmp/.X11-unix
+    - /run/udev:/run/udev:ro
+    - /dev:/dev
+    - /usr/lib/wsl:/usr/lib/wsl:ro
+
+services:
+  intel-sys:
+    <<: *wsl-gpu
+  intel-sys-sim:
+    <<: *wsl-gpu

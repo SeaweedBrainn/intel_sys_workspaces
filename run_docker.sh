@@ -90,6 +90,12 @@ else
         export COMPOSE_FILE="docker-compose.yml"
         PLATFORM_NAME="Simulation [x86_64 standard CPU]"
     fi
+
+    # WSL2: GPU OpenGL goes through Mesa's d3d12 driver (see docker-compose.wsl.yml).
+    if [ -e /dev/dxg ] && grep -qi microsoft /proc/version 2>/dev/null; then
+        export COMPOSE_FILE="${COMPOSE_FILE}:docker-compose.wsl.yml"
+        PLATFORM_NAME="${PLATFORM_NAME} + WSL d3d12 OpenGL"
+    fi
 fi
 
 # 2b. Zenoh RMW overlay (zenohd router + docker/zenoh.env). Router uses the same image as the target.

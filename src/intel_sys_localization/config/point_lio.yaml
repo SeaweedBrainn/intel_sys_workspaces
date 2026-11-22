@@ -58,7 +58,7 @@
       publish_odometry_without_downsample: true
 
     publish:
-      path_en: true
+      path_en: false             # full-history path republished every update; lag grows over a run
       scan_publish_en: true
       scan_bodyframe_pub_en: false
 

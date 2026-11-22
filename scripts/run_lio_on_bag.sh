@@ -24,7 +24,7 @@ mkdir -p "$(dirname "$OUT")"
 cleanup() {
   kill -INT "$EVAL" 2>/dev/null; wait "$EVAL" 2>/dev/null
   kill -INT "$LOC" "$DESC" 2>/dev/null; sleep 3
-  pkill -9 -f "pointlio_mapping|point_lio_frame_adapter|lidar_body_filter|robot_state_publisher|icp_odometry" 2>/dev/null
+  pkill -9 -f "pointlio_mapping|point_lio_frame_adapter|lidar_body_filter|robot_state_publisher" 2>/dev/null
 }
 trap cleanup EXIT
 
@@ -32,9 +32,7 @@ ros2 launch intel_sys_description robot_description.launch.py use_sim_time:=true
 DESC=$!
 ros2 launch intel_sys_localization localization.launch.py use_sim_time:=true "$@" > "$OUT.loc.log" 2>&1 &
 LOC=$!
-# EVAL_ARGS: extra recorder options, e.g. for odometry:=icp
-#   EVAL_ARGS="--odom-topic /odom --cloud-topic /odom_local_scan_map"
-python3 -u scripts/lio_bag_eval.py --out "$OUT" --title "$(basename "$BAG") rate $RATE $*" ${EVAL_ARGS:-} > "$OUT.log" 2>&1 &
+python3 -u scripts/lio_bag_eval.py --out "$OUT" --title "$(basename "$BAG") rate $RATE $*" > "$OUT.log" 2>&1 &
 EVAL=$!
 sleep 8
 ros2 bag play "$BAG" --clock 200 -r "$RATE" --start-offset "${START_OFFSET:-0}" --topics /lidar/points_raw /lidar/imu > "$OUT.play.log" 2>&1

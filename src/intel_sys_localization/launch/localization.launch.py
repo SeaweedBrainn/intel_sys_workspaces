@@ -1,4 +1,3 @@
-import os
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription
 from launch.launch_description_sources import PythonLaunchDescriptionSource
@@ -18,14 +17,6 @@ def generate_launch_description():
 
     point_lio_params_arg = DeclareLaunchArgument(
         'point_lio_params', default_value=default_point_lio_params, description='Point-LIO parameters YAML')
-    odometry_arg = DeclareLaunchArgument(
-        'odometry', default_value='point_lio',
-        description='LiDAR odometry for odom -> base_footprint: point_lio (default) or icp (RTAB-Map icp_odometry)')
-    icp_params_arg = DeclareLaunchArgument(
-        'icp_params', default_value=PathJoinSubstitution([pkg_share, 'config', 'icp_odometry.yaml']),
-        description='icp_odometry parameters YAML (odometry:=icp)')
-    icp_imu_arg = DeclareLaunchArgument(
-        'icp_imu_topic', default_value='/lidar/imu', description='IMU for icp_odometry (odometry:=icp)')
     slam_camera_arg = DeclareLaunchArgument(
         'slam_camera', default_value='false', description='RTAB-Map also uses the D435 for visual loop closures')
     slam_arg = DeclareLaunchArgument('slam', default_value='false', description='Also run RTAB-Map (map -> odom, /map)')
@@ -37,8 +28,6 @@ def generate_launch_description():
 
     use_sim_time = LaunchConfiguration('use_sim_time')
     lidar_type = LaunchConfiguration('lidar_type')
-    use_point_lio = IfCondition(PythonExpression(["'", LaunchConfiguration('odometry'), "' == 'point_lio'"]))
-    use_icp = IfCondition(PythonExpression(["'", LaunchConfiguration('odometry'), "' == 'icp'"]))
 
     # 0. LiDAR Body Filter Node (crops points inside robot bounding box for both Sim and Real)
     lidar_body_filter_node = Node(
@@ -65,7 +54,6 @@ def generate_launch_description():
         executable='pointlio_mapping',
         name='point_lio',
         output='screen',
-        condition=use_point_lio,
         parameters=[
             LaunchConfiguration('point_lio_params'),
             {
@@ -74,8 +62,6 @@ def generate_launch_description():
             }
         ],
         remappings=[
-            ('/lidar/points', '/lidar/points'),
-            ('/lidar/imu', '/lidar/imu'),
             ('/aft_mapped_to_init', '/point_lio/raw_odom'),
             ('/cloud_registered', '/point_lio/raw_cloud_registered'),
             ('/path', '/point_lio/raw_path'),
@@ -88,7 +74,6 @@ def generate_launch_description():
         executable='point_lio_frame_adapter',
         name='point_lio_frame_adapter',
         output='screen',
-        condition=use_point_lio,
         parameters=[{
             'use_sim_time': use_sim_time,
             'odom_frame': 'odom',
@@ -102,24 +87,6 @@ def generate_launch_description():
             'raw_path_topic': '/point_lio/raw_path',
             'path_topic': '/point_lio/path',
         }]
-    )
-
-    # 1b. Alternative: RTAB-Map's own ICP odometry (odom -> base_footprint, /odom)
-    icp_odometry_node = Node(
-        package='rtabmap_odom',
-        executable='icp_odometry',
-        name='icp_odometry',
-        output='screen',
-        condition=use_icp,
-        parameters=[
-            LaunchConfiguration('icp_params'),
-            {'use_sim_time': use_sim_time},
-        ],
-        remappings=[
-            ('scan_cloud', '/lidar/points'),
-            ('imu', LaunchConfiguration('icp_imu_topic')),
-            ('odom', '/odom'),
-        ],
     )
 
     # 3. RTAB-Map on the LiDAR odometry (owns map -> odom)
@@ -140,9 +107,6 @@ def generate_launch_description():
         use_sim_time_arg,
         lidar_type_arg,
         point_lio_params_arg,
-        odometry_arg,
-        icp_params_arg,
-        icp_imu_arg,
         slam_arg,
         slam_camera_arg,
         slam_localization_arg,
@@ -150,6 +114,5 @@ def generate_launch_description():
         lidar_body_filter_node,
         point_lio_node,
         point_lio_frame_adapter_node,
-        icp_odometry_node,
         slam_launch,
     ])

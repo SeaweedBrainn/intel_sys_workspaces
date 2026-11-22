@@ -166,9 +166,9 @@ def main():
     ap.add_argument('--out', required=True, help='output path prefix (no extension)')
     ap.add_argument('--title', default='')
     ap.add_argument('--odom-topic', default='/point_lio/raw_odom',
-                    help='odometry to record (icp_odometry: /odom)')
+                    help='odometry to record')
     ap.add_argument('--cloud-topic', default='/point_lio/raw_cloud_registered',
-                    help='registered cloud in the odometry frame (icp_odometry: /odom_local_scan_map)')
+                    help='registered cloud in the odometry frame')
     ap.add_argument('--path-topic', default=None,
                     help='also draw the latest nav_msgs/Path on this topic (e.g. /rtabmap/mapPath)')
     ap.add_argument('--cloud-latest', action='store_true',

@@ -1,0 +1,39 @@
+# Unit tests on every push and pull request, in a stock ROS 2 Humble container.
+# Builds only the packages with tests (and what they depend on in this repo);
+# the full stack needs the Docker images (Gazebo, Point-LIO, RTAB-Map).
+name: tests
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-22.04
+    container: ros:humble-ros-base-jammy
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install test dependencies
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends python3-pytest python3-numpy python3-serial
+
+      - name: Build
+        run: |
+          source /opt/ros/humble/setup.bash
+          colcon build --packages-up-to intel_sys_hardware intel_sys_localization
+
+      - name: Package tests
+        run: |
+          source install/setup.bash
+          colcon test --packages-select intel_sys_hardware intel_sys_localization --event-handlers console_direct+
+          colcon test-result --verbose
+
+      - name: Script tests
+        run: |
+          source install/setup.bash
+          python3 -m pytest -q scripts/autonomy scripts/dashboard

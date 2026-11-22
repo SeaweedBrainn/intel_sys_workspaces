@@ -34,15 +34,17 @@ def stamp(h):
 
 
 class Recorder:
-    def __init__(self, node):
+    def __init__(self, node, odom_topic='/point_lio/raw_odom', cloud_topic='/point_lio/raw_cloud_registered',
+                 cloud_latest=False):
+        self.cloud_latest = cloud_latest
         self.clock = None
         self.traj = []      # t, x, y, z, qx, qy, qz, qw
         self.lag = []       # clock time, lag
         self.pts = []
         self.last_print = 0.0
         node.create_subscription(Clock, '/clock', self.on_clock, qos_profile_sensor_data)
-        node.create_subscription(Odometry, '/point_lio/raw_odom', self.on_odom, 50)
-        node.create_subscription(PointCloud2, '/point_lio/raw_cloud_registered', self.on_cloud, qos_profile_sensor_data)
+        node.create_subscription(Odometry, odom_topic, self.on_odom, 50)
+        node.create_subscription(PointCloud2, cloud_topic, self.on_cloud, qos_profile_sensor_data)
 
     def on_clock(self, m):
         self.clock = m.clock.sec + m.clock.nanosec * 1e-9
@@ -60,6 +62,9 @@ class Recorder:
         # Keep this cheap: it shares the thread that timestamps odometry for the
         # lag measurement. Every 3rd cloud, voxel-thinned with numpy; merged later.
         self.n_clouds = getattr(self, 'n_clouds', 0) + 1
+        if self.cloud_latest:
+            self.latest_cloud = m  # whole map republished each update: keep only the newest
+            return
         if self.n_clouds % 3:
             return
         a = pc2.read_points(m, field_names=('x', 'y', 'z'), skip_nans=True)
@@ -70,6 +75,10 @@ class Recorder:
             self.pts = [self.merged()]
 
     def merged(self):
+        if self.cloud_latest and getattr(self, 'latest_cloud', None) is not None:
+            a = pc2.read_points(self.latest_cloud, field_names=('x', 'y', 'z'), skip_nans=True)
+            self.pts = [np.stack([a['x'], a['y'], a['z']], -1).astype(np.float32)]
+            self.latest_cloud = None
         if not self.pts:
             return np.zeros((0, 3), np.float32)
         xyz = np.concatenate(self.pts)
@@ -148,11 +157,17 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument('--out', required=True, help='output path prefix (no extension)')
     ap.add_argument('--title', default='')
+    ap.add_argument('--odom-topic', default='/point_lio/raw_odom',
+                    help='odometry to record (icp_odometry: /odom)')
+    ap.add_argument('--cloud-topic', default='/point_lio/raw_cloud_registered',
+                    help='registered cloud in the odometry frame (icp_odometry: /odom_local_scan_map)')
+    ap.add_argument('--cloud-latest', action='store_true',
+                    help='the cloud topic republishes the whole map: keep only the last message')
     args = ap.parse_args()
     rclpy.init()
     node = rclpy.create_node('lio_bag_eval')
     node.set_parameters([rclpy.parameter.Parameter('use_sim_time', value=True)])
-    rec = Recorder(node)
+    rec = Recorder(node, args.odom_topic, args.cloud_topic, args.cloud_latest)
     stop = {'now': False}
     signal.signal(signal.SIGINT, lambda *_: stop.__setitem__('now', True))
     signal.signal(signal.SIGTERM, lambda *_: stop.__setitem__('now', True))

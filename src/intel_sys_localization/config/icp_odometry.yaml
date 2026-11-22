@@ -1,0 +1,39 @@
+# RTAB-Map's own LiDAR odometry (rtabmap_odom/icp_odometry), the alternative to
+# Point-LIO: localization.launch.py odometry:=icp.
+#
+# Frame-to-map ICP on the body-filtered L2 cloud. The L2's IMU orientation keeps
+# the cloud level and seeds rotation; translation comes from ICP only. Values
+# follow RTAB-Map's 3D LiDAR examples, sized for the L2 (~5,300 pts/scan, 12 Hz).
+# RTAB-Map parameters are strings.
+/**:
+  ros__parameters:
+    frame_id: base_footprint
+    odom_frame_id: odom
+    publish_tf: true
+    wait_for_transform: 0.2
+    wait_imu_to_init: true
+    expected_update_rate: 15.0
+    sync_queue_size: 10
+
+    Odom/Strategy: "0"                  # frame-to-map
+    Odom/ScanKeyFrameThr: "0.4"
+    Odom/GuessMotion: "true"
+    Odom/Deskewing: "true"              # uses the L2's per-point time field
+    OdomF2M/ScanSubtractRadius: "0.1"
+    OdomF2M/ScanMaxSize: "15000"
+    OdomF2M/BundleAdjustment: "false"
+
+    Icp/Strategy: "1"                   # libpointmatcher
+    Icp/VoxelSize: "0.1"
+    Icp/PointToPlane: "true"
+    Icp/PointToPlaneK: "20"
+    Icp/PointToPlaneRadius: "0"
+    Icp/PointToPlaneGroundNormalsUp: "0.8"
+    Icp/Iterations: "10"
+    Icp/Epsilon: "0.001"
+    Icp/MaxTranslation: "3"
+    Icp/MaxCorrespondenceDistance: "1"
+    Icp/CorrespondenceRatio: "0.01"
+    Icp/OutlierRatio: "0.7"
+    Icp/RangeMin: "0.3"
+    Icp/RangeMax: "30"

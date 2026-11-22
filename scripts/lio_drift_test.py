@@ -51,8 +51,9 @@ def along_cross(start, now, heading):
 
 
 class DriftTest:
-    def __init__(self, node, trace=False):
+    def __init__(self, node, trace=False, settle=0.3):
         self.node = node
+        self.settle = settle
         self.trace = trace
         self.truth = None
         self.lio = None
@@ -77,7 +78,7 @@ class DriftTest:
         end = time.time() + timeout
         while self.lio_t < target and time.time() < end:
             self.spin(0.1)
-        self.spin(0.3)
+        self.spin(self.settle)
 
     def spin(self, seconds):
         end = time.time() + seconds
@@ -127,12 +128,14 @@ def main():
     ap.add_argument('--legs', type=int, default=4, help='alternating forward/back legs')
     ap.add_argument('--label', default='')
     ap.add_argument('--trace', action='store_true', help='print progress once per second')
+    ap.add_argument('--settle', type=float, default=3.0,
+                    help='seconds to wait after stopping before comparing (Point-LIO can still correct)')
     args = ap.parse_args()
 
     rclpy.init()
     node = rclpy.create_node('lio_drift_test')
     node.set_parameters([rclpy.parameter.Parameter('use_sim_time', value=True)])
-    t = DriftTest(node, trace=args.trace)
+    t = DriftTest(node, trace=args.trace, settle=args.settle)
     deadline = time.time() + 30
     while (t.truth is None or t.lio is None) and time.time() < deadline:
         t.spin(0.2)

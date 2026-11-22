@@ -1,42 +1,68 @@
 import os
+import tempfile
+
+import yaml
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription
+from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription, OpaqueFunction
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration, PathJoinSubstitution
 from launch_ros.substitutions import FindPackageShare
 
+
+def slam_overlay(params):
+    """Phase 7 (docs/ROADMAP.md): plan globally on RTAB-Map's /map.
+
+    The global costmap moves to the map frame and takes RTAB-Map's grid as a
+    static layer, with the live cloud (STVL) on top for obstacles the map does
+    not have yet. The local costmap, controller and behaviors stay in odom.
+    """
+    gc = params['global_costmap']['global_costmap']['ros__parameters']
+    gc['global_frame'] = 'map'
+    gc['rolling_window'] = False
+    for key in ('width', 'height'):
+        gc.pop(key, None)  # sized from /map
+    gc['plugins'] = ['static_layer', 'stvl_layer', 'inflation_layer']
+    gc['static_layer'] = {
+        'plugin': 'nav2_costmap_2d::StaticLayer',
+        'map_topic': '/map',
+        'map_subscribe_transient_local': True,
+    }
+    params['bt_navigator']['ros__parameters']['global_frame'] = 'map'
+    return params
+
+
+def make_nav2(context):
+    params_file = LaunchConfiguration('params_file').perform(context)
+    if LaunchConfiguration('slam').perform(context) == 'true':
+        with open(params_file) as f:
+            params = slam_overlay(yaml.safe_load(f))
+        fd, params_file = tempfile.mkstemp(prefix='nav2_params_slam_', suffix='.yaml')
+        with os.fdopen(fd, 'w') as f:
+            yaml.safe_dump(params, f)
+
+    nav2_bringup_pkg = FindPackageShare('nav2_bringup')
+    return [IncludeLaunchDescription(
+        PythonLaunchDescriptionSource(
+            PathJoinSubstitution([nav2_bringup_pkg, 'launch', 'navigation_launch.py'])),
+        launch_arguments={
+            'use_sim_time': LaunchConfiguration('use_sim_time'),
+            'autostart': LaunchConfiguration('autostart'),
+            'params_file': params_file,
+            'map': LaunchConfiguration('map'),
+        }.items()
+    )]
+
+
 def generate_launch_description():
     pkg_share = FindPackageShare('intel_sys_navigation')
-    nav2_bringup_pkg = FindPackageShare('nav2_bringup')
-
     default_nav2_params = PathJoinSubstitution([pkg_share, 'config', 'nav2_params.yaml'])
 
-    # Declare arguments
-    use_sim_time_arg = DeclareLaunchArgument('use_sim_time', default_value='false', description='Use simulation clock')
-    autostart_arg = DeclareLaunchArgument('autostart', default_value='true', description='Automatically startup Nav2 stack')
-    params_file_arg = DeclareLaunchArgument('params_file', default_value=default_nav2_params, description='Nav2 params YAML')
-    map_arg = DeclareLaunchArgument('map', default_value='', description='Full path to map yaml file to load (optional)')
-
-    use_sim_time = LaunchConfiguration('use_sim_time')
-    autostart = LaunchConfiguration('autostart')
-    params_file = LaunchConfiguration('params_file')
-    map_file = LaunchConfiguration('map')
-
-    # Nav2 Stack Bringup
-    nav2_bringup_launch = IncludeLaunchDescription(
-        PythonLaunchDescriptionSource(PathJoinSubstitution([nav2_bringup_pkg, 'launch', 'navigation_launch.py'])),
-        launch_arguments={
-            'use_sim_time': use_sim_time,
-            'autostart': autostart,
-            'params_file': params_file,
-            'map': map_file,
-        }.items()
-    )
-
     return LaunchDescription([
-        use_sim_time_arg,
-        autostart_arg,
-        params_file_arg,
-        map_arg,
-        nav2_bringup_launch
+        DeclareLaunchArgument('use_sim_time', default_value='false', description='Use simulation clock'),
+        DeclareLaunchArgument('autostart', default_value='true', description='Automatically startup Nav2 stack'),
+        DeclareLaunchArgument('params_file', default_value=default_nav2_params, description='Nav2 params YAML'),
+        DeclareLaunchArgument('map', default_value='', description='Full path to map yaml file to load (optional)'),
+        DeclareLaunchArgument('slam', default_value='false',
+                              description='Plan on RTAB-Map /map in the map frame (needs slam.launch.py running)'),
+        OpaqueFunction(function=make_nav2),
     ])

@@ -20,6 +20,7 @@ def generate_launch_description():
     y_arg = DeclareLaunchArgument('y', default_value='0.0', description='Spawn Y position')
     z_arg = DeclareLaunchArgument('z', default_value='0.05', description='Spawn Z position')
     yaw_arg = DeclareLaunchArgument('yaw', default_value='0.0', description='Spawn Yaw orientation')
+    slam_arg = DeclareLaunchArgument('slam', default_value='true', description='Run RTAB-Map and plan on its /map')
 
     # 1. Simulation Bridge / World (Spawns robot, Gazebo plugins, sensor bridges)
     sim_launch = IncludeLaunchDescription(
@@ -40,6 +41,7 @@ def generate_launch_description():
         launch_arguments={
             'use_sim_time': 'true',
             'lidar_type': '5',
+            'slam': LaunchConfiguration('slam'),
         }.items()
     )
 
@@ -49,6 +51,7 @@ def generate_launch_description():
         launch_arguments={
             'use_sim_time': 'true',
             'autostart': 'true',
+            'slam': LaunchConfiguration('slam'),
         }.items()
     )
 
@@ -74,6 +77,7 @@ def generate_launch_description():
         y_arg,
         z_arg,
         yaw_arg,
+        slam_arg,
         sim_launch,
         localization_launch,
         navigation_launch,

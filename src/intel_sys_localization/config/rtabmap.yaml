@@ -1,0 +1,65 @@
+# RTAB-Map, LiDAR-only (Phase 6 in docs/ROADMAP.md).
+#
+# Point-LIO owns odom -> base_footprint; RTAB-Map reads it from TF and owns
+# map -> odom. No camera yet: loop closures come from proximity detection on the
+# point clouds (RGBD/ProximityBySpace), not from visual words. Phase 8 adds the
+# D435 as RGB-D by subscribing to it here.
+#
+# RTAB-Map's own parameters are strings, even when numeric.
+/**:
+  ros__parameters:
+    frame_id: base_footprint
+    odom_frame_id: odom          # odometry from TF (Point-LIO), no odom topic
+    map_frame_id: map
+    publish_tf: true
+    subscribe_depth: false
+    subscribe_rgb: false
+    subscribe_scan: false
+    subscribe_scan_cloud: true
+    approx_sync: false
+    wait_for_transform: 0.2
+    sync_queue_size: 10
+
+    # Process a node at most once per second, or after moving 5 cm / ~3 deg.
+    Rtabmap/DetectionRate: "1"
+    RGBD/LinearUpdate: "0.05"
+    RGBD/AngularUpdate: "0.05"
+
+    # Ground robot: optimize x, y, yaw only.
+    Reg/Force3DoF: "true"
+    Optimizer/GravitySigma: "0"
+
+    # Registration between nodes (neighbor refining + loop closures): ICP.
+    Reg/Strategy: "1"
+    Icp/VoxelSize: "0.1"
+    Icp/PointToPlane: "true"
+    Icp/PointToPlaneK: "20"
+    Icp/PointToPlaneRadius: "0"
+    Icp/Iterations: "10"
+    Icp/Epsilon: "0.001"
+    Icp/MaxTranslation: "2"
+    Icp/MaxCorrespondenceDistance: "0.5"
+    Icp/CorrespondenceRatio: "0.2"
+    RGBD/NeighborLinkRefining: "true"
+
+    # LiDAR-only loop closure: proximity in space, no bag-of-words.
+    RGBD/ProximityBySpace: "true"
+    RGBD/ProximityMaxGraphDepth: "0"
+    RGBD/ProximityPathMaxNeighbors: "10"
+    RGBD/LocalRadius: "5"
+    Kp/MaxFeatures: "-1"
+    Mem/NotLinkedNodesKept: "false"
+    Mem/STMSize: "30"
+
+    # 2D occupancy grid for Nav2 (/map), built from the cloud.
+    RGBD/CreateOccupancyGrid: "true"
+    Grid/Sensor: "0"
+    Grid/3D: "false"
+    Grid/RayTracing: "true"
+    Grid/CellSize: "0.05"
+    Grid/RangeMax: "10"
+    Grid/ClusterRadius: "0.1"
+    Grid/MinGroundHeight: "-0.1"
+    Grid/MaxGroundHeight: "0.05"
+    Grid/MaxObstacleHeight: "1.0"
+    Grid/NormalsSegmentation: "false"

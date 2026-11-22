@@ -1,6 +1,7 @@
 import os
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument
+from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription
+from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.conditions import IfCondition
 from launch.substitutions import LaunchConfiguration, PathJoinSubstitution
 from launch_ros.actions import Node
@@ -14,6 +15,8 @@ def generate_launch_description():
     # Declare arguments
     use_sim_time_arg = DeclareLaunchArgument('use_sim_time', default_value='false', description='Use simulation clock')
     lidar_type_arg = DeclareLaunchArgument('lidar_type', default_value='5', description='Point-LIO LiDAR Type (2: VELO16, 5: UNILIDAR)')
+
+    slam_arg = DeclareLaunchArgument('slam', default_value='false', description='Also run RTAB-Map (map -> odom, /map)')
 
     use_sim_time = LaunchConfiguration('use_sim_time')
     lidar_type = LaunchConfiguration('lidar_type')
@@ -80,10 +83,19 @@ def generate_launch_description():
         }]
     )
 
+    # 3. RTAB-Map on Point-LIO odometry (owns map -> odom)
+    slam_launch = IncludeLaunchDescription(
+        PythonLaunchDescriptionSource(PathJoinSubstitution([pkg_share, 'launch', 'slam.launch.py'])),
+        launch_arguments={'use_sim_time': use_sim_time}.items(),
+        condition=IfCondition(LaunchConfiguration('slam')),
+    )
+
     return LaunchDescription([
         use_sim_time_arg,
         lidar_type_arg,
+        slam_arg,
         lidar_body_filter_node,
         point_lio_node,
-        point_lio_frame_adapter_node
+        point_lio_frame_adapter_node,
+        slam_launch,
     ])

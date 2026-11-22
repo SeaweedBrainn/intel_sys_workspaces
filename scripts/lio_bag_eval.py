@@ -19,7 +19,7 @@ import time
 
 import numpy as np
 import rclpy
-from nav_msgs.msg import Odometry
+from nav_msgs.msg import Odometry, Path
 from PIL import Image, ImageDraw
 from rclpy.qos import qos_profile_sensor_data
 from rosgraph_msgs.msg import Clock
@@ -35,8 +35,11 @@ def stamp(h):
 
 class Recorder:
     def __init__(self, node, odom_topic='/point_lio/raw_odom', cloud_topic='/point_lio/raw_cloud_registered',
-                 cloud_latest=False):
+                 cloud_latest=False, path_topic=None):
         self.cloud_latest = cloud_latest
+        self.path = None   # latest nav_msgs/Path from path_topic (e.g. RTAB-Map's optimized mapPath)
+        if path_topic:
+            node.create_subscription(Path, path_topic, lambda m: setattr(self, 'path', m), 10)
         self.clock = None
         self.traj = []      # t, x, y, z, qx, qy, qz, qw
         self.lag = []       # clock time, lag
@@ -115,6 +118,11 @@ def draw(rec, out, title):
     for x, y, z in pts:
         d.point(top(x, y), fill=(120, 120, 120))
     d.line([top(x, y) for x, y in tr[:, 1:3]], fill=(0, 90, 255), width=2)
+    if rec.path is not None and len(rec.path.poses) > 1:
+        pp = [(p.pose.position.x, p.pose.position.y) for p in rec.path.poses]
+        d.line([top(x, y) for x, y in pp], fill=(0, 170, 0), width=2)
+        d.text((14, H - 36), 'blue: odometry   green: RTAB-Map optimized path (' + rec.path.header.frame_id + ')',
+               fill=(0, 0, 0))
     for (x, y), col in [(tr[0, 1:3], (0, 170, 0)), (tr[-1, 1:3], (220, 0, 0))]:
         u, v = top(x, y)
         d.ellipse([u - 6, v - 6, u + 6, v + 6], fill=col)
@@ -161,13 +169,15 @@ def main():
                     help='odometry to record (icp_odometry: /odom)')
     ap.add_argument('--cloud-topic', default='/point_lio/raw_cloud_registered',
                     help='registered cloud in the odometry frame (icp_odometry: /odom_local_scan_map)')
+    ap.add_argument('--path-topic', default=None,
+                    help='also draw the latest nav_msgs/Path on this topic (e.g. /rtabmap/mapPath)')
     ap.add_argument('--cloud-latest', action='store_true',
                     help='the cloud topic republishes the whole map: keep only the last message')
     args = ap.parse_args()
     rclpy.init()
     node = rclpy.create_node('lio_bag_eval')
     node.set_parameters([rclpy.parameter.Parameter('use_sim_time', value=True)])
-    rec = Recorder(node, args.odom_topic, args.cloud_topic, args.cloud_latest)
+    rec = Recorder(node, args.odom_topic, args.cloud_topic, args.cloud_latest, args.path_topic)
     stop = {'now': False}
     signal.signal(signal.SIGINT, lambda *_: stop.__setitem__('now', True))
     signal.signal(signal.SIGTERM, lambda *_: stop.__setitem__('now', True))

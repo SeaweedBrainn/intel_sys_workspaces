@@ -26,6 +26,8 @@ def generate_launch_description():
         description='icp_odometry parameters YAML (odometry:=icp)')
     icp_imu_arg = DeclareLaunchArgument(
         'icp_imu_topic', default_value='/lidar/imu', description='IMU for icp_odometry (odometry:=icp)')
+    slam_camera_arg = DeclareLaunchArgument(
+        'slam_camera', default_value='false', description='RTAB-Map also uses the D435 for visual loop closures')
     slam_arg = DeclareLaunchArgument('slam', default_value='false', description='Also run RTAB-Map (map -> odom, /map)')
     slam_localization_arg = DeclareLaunchArgument(
         'slam_localization', default_value='false',
@@ -129,6 +131,7 @@ def generate_launch_description():
             # mapping starts a fresh database; localization must keep it
             'new_map': PythonExpression(["'false' if '", LaunchConfiguration('slam_localization'), "' == 'true' else 'true'"]),
             'database_path': LaunchConfiguration('database_path'),
+            'camera': LaunchConfiguration('slam_camera'),
         }.items(),
         condition=IfCondition(LaunchConfiguration('slam')),
     )
@@ -141,6 +144,7 @@ def generate_launch_description():
         icp_params_arg,
         icp_imu_arg,
         slam_arg,
+        slam_camera_arg,
         slam_localization_arg,
         database_path_arg,
         lidar_body_filter_node,

@@ -25,7 +25,7 @@ rm -f "$DB"
 cleanup() {
   kill -INT "$EVAL" 2>/dev/null; wait "$EVAL" 2>/dev/null
   kill -INT "$SLAM" 2>/dev/null; sleep 4
-  pkill -9 -f "rgbd_odometry|rtabmap_slam/rtabmap --ros|rgbd_sync" 2>/dev/null
+  pkill -9 -f "rgbd_odometry|rtabmap_slam/rtabmap|rtabmap_sync/rgbd_sync" 2>/dev/null
 }
 trap cleanup EXIT
 
@@ -44,6 +44,7 @@ ros2 bag play "$BAG" --clock 200 -r "$RATE" --start-offset "${START_OFFSET:-0}" 
 sleep 8
 kill -INT "$EVAL" 2>/dev/null; wait "$EVAL" 2>/dev/null
 kill -INT "$SLAM" 2>/dev/null; sleep 6
+pkill -INT -f "rtabmap_slam/rtabmap" 2>/dev/null; sleep 3   # let it write the database
 python3 - "$DB" "$OUT.slam.log" >> "$OUT.log" <<'EOF'
 import re
 import sqlite3

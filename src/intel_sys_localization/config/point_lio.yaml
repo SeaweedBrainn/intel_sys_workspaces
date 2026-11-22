@@ -10,7 +10,9 @@
     init_map_size: 10
     point_filter_num: 1
     space_down_sample: true
-    filter_size_surf: 0.1        # 0.1m voxel grid (preserves ground & wall planes)
+    # 0.1 m voxels. Unitree uses 0.4: ~30% less CPU, equally accurate in the sim, but
+    # ~0.5 cm more pose jitter on the real bags. Fallback if the Jetson can't keep up.
+    filter_size_surf: 0.1
     filter_size_map: 0.1
     cube_side_length: 1000.0
 
@@ -27,7 +29,7 @@
       lidar_type: 5              # 5: UNILIDAR (Unitree L2)
       scan_line: 18
       timestamp_unit: 0
-      blind: 0.1                 # Min blind distance (body filter handles chassis)
+      blind: 0.1                 # Unitree uses 0.5; no gain here (body filter removes the chassis) and it diverged once
 
     mapping:
       imu_en: true

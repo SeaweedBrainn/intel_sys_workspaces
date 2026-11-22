@@ -65,6 +65,9 @@ The whole chain runs in Gazebo on the laptop (`intel-sys-sim`, amd64, rendering 
 - Sim straight legs (4 x 12 m, clean runs): input model 5.5-8.5% short (two runs); output model 0.2%; input model with `acc_cov_input` 3.0 0.3-0.4%; Unitree's full config (output model, 0.4 m voxels, blind 0.5) 0.1-0.2%; `plane_thr` 0.05 worse (9-13%).
 - Real bags: the input model diverged on o1 and o2 (5 m/s speeds) and drew the dome-up bag's walls doubled; the output model gave single walls, never diverged in 16 runs (each short bag 4 times, including the shaky o1 start that diverged before) and ends within 0.3 m of Unitree's config on every bag. Real-time lag unchanged (0.02-0.03 s).
 - Nav2 mapping lap: passes (Point-LIO ends 0.5-1.5 cm from truth, SLAM within 8 cm). RTAB-Map's proximity closures vary from lap to lap with either model (0, 3 and 5 seen), so the test's "at least one closure" check can fail by chance.
+- Unitree's other L2 settings, each on top of the output model (sim legs; 4 bags; CPU = Point-LIO on the laptop, % of one core):
+  - 0.4 m voxels (`filter_size_surf`/`map`, ours 0.1): sim legs 0.1% (vs 0.3%), Nav2 lap passes (5 closures). On the bags the smoothed paths agree with 0.1 m within 2.5% and no divergence, but pose jitter is 2.2-2.4 cm RMS vs 1.5-1.8 cm, and CPU 23% vs 28-35%. **Kept at 0.1**; 0.4 is the fallback if Point-LIO can't keep up on the Jetson.
+  - `blind` 0.5 (ours 0.1): no accuracy gain, diverged once from the shaky o1 start. **Kept at 0.1**: the body filter already removes the chassis.
 - Test-harness pitfall: `kill -INT` on `ros2 launch` from a script did not stop its nodes; stale `point_lio_frame_adapter`s anchored on an earlier run corrupted `/odom` in later runs. Kill every ROS process and check none are left between runs.
 - **Visual-only RTAB-Map** (D435 RGB-D): visual odometry loses track on these hand-carried bags (84-88% of frames with defaults, 37% with reset-on-loss and optical flow) and jumps at every reset; not usable as odometry. It does find visual loop closures (7 on the dome-up bag).
 - **Phase 8 wiring done:** `slam_camera:=true` adds the D435 to RTAB-Map (visual loop closures, visual + ICP registration, global relocalization). It runs alongside Point-LIO on the bags, but none of them returns to its start, so no loop closures of any kind happened and the benefit is still unmeasured.
@@ -72,7 +75,7 @@ The whole chain runs in Gazebo on the laptop (`intel-sys-sim`, amd64, rendering 
 
 Next:
 - [ ] Rebuild the rover image and run the chain on the robot (`slam:=true`), robot still at start-up.
-- [ ] Point-LIO on the Jetson: measure CPU and lag with a bag played on the Orin NX.
+- [ ] Point-LIO on the Jetson: measure CPU and lag with a bag played on the Orin NX (about 30% of a laptop core at 0.1 m voxels; if it falls behind, switch to 0.4 m voxels).
 - [ ] Without a camera there is no global relocalization: the robot must start at the map origin or be given `/rtabmap/initialpose`. Add a "set pose" control to the dashboard, or a fixed home spot.
 - [ ] Guard against Point-LIO divergence (e.g. reset when its speed exceeds what the robot can do). None seen since the switch to the output model, but still wanted before unattended runs.
 - [ ] Record a loop that ends exactly where it started (floor mark), with the camera on: measures drift and shows whether the camera's loop closures (`slam_camera:=true`) help.

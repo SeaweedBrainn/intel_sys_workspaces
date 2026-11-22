@@ -3,7 +3,7 @@ from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.conditions import IfCondition
-from launch.substitutions import LaunchConfiguration, PathJoinSubstitution
+from launch.substitutions import LaunchConfiguration, PathJoinSubstitution, PythonExpression
 from launch_ros.actions import Node
 from launch_ros.substitutions import FindPackageShare
 
@@ -17,6 +17,11 @@ def generate_launch_description():
     lidar_type_arg = DeclareLaunchArgument('lidar_type', default_value='5', description='Point-LIO LiDAR Type (2: VELO16, 5: UNILIDAR)')
 
     slam_arg = DeclareLaunchArgument('slam', default_value='false', description='Also run RTAB-Map (map -> odom, /map)')
+    slam_localization_arg = DeclareLaunchArgument(
+        'slam_localization', default_value='false',
+        description='RTAB-Map localizes on the saved database instead of mapping (keeps it)')
+    database_path_arg = DeclareLaunchArgument(
+        'database_path', default_value='~/.ros/rtabmap.db', description='RTAB-Map database')
 
     use_sim_time = LaunchConfiguration('use_sim_time')
     lidar_type = LaunchConfiguration('lidar_type')
@@ -86,7 +91,13 @@ def generate_launch_description():
     # 3. RTAB-Map on Point-LIO odometry (owns map -> odom)
     slam_launch = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(PathJoinSubstitution([pkg_share, 'launch', 'slam.launch.py'])),
-        launch_arguments={'use_sim_time': use_sim_time}.items(),
+        launch_arguments={
+            'use_sim_time': use_sim_time,
+            'localization': LaunchConfiguration('slam_localization'),
+            # mapping starts a fresh database; localization must keep it
+            'new_map': PythonExpression(["'false' if '", LaunchConfiguration('slam_localization'), "' == 'true' else 'true'"]),
+            'database_path': LaunchConfiguration('database_path'),
+        }.items(),
         condition=IfCondition(LaunchConfiguration('slam')),
     )
 
@@ -94,6 +105,8 @@ def generate_launch_description():
         use_sim_time_arg,
         lidar_type_arg,
         slam_arg,
+        slam_localization_arg,
+        database_path_arg,
         lidar_body_filter_node,
         point_lio_node,
         point_lio_frame_adapter_node,

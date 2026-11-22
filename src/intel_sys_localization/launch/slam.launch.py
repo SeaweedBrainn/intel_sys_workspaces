@@ -33,6 +33,11 @@ def generate_launch_description():
         'Mem/IncrementalMemory': ParameterValue(PythonExpression(
             ["'false' if '", localization, "' == 'true' else 'true'"]), value_type=str),
         'Mem/InitWMWithAllNodes': ParameterValue(localization, value_type=str),
+        # Without BoW (no camera) RTAB-Map cannot relocalize globally. By default
+        # it assumes the robot restarts at the LAST pose of the mapping session;
+        # assume the map origin (where mapping began) instead. Start the robot
+        # there, or publish a guess on /rtabmap/initialpose.
+        'RGBD/StartAtOrigin': ParameterValue(localization, value_type=str),
     }
 
     common = dict(

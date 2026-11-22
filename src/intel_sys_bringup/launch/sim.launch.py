@@ -21,6 +21,8 @@ def generate_launch_description():
     z_arg = DeclareLaunchArgument('z', default_value='0.05', description='Spawn Z position')
     yaw_arg = DeclareLaunchArgument('yaw', default_value='0.0', description='Spawn Yaw orientation')
     world_arg = DeclareLaunchArgument('world', default_value='default.sdf', description='World file in intel_sys_sim/worlds (e.g. loop.sdf)')
+    slam_localization_arg = DeclareLaunchArgument('slam_localization', default_value='false', description='Localize on a saved RTAB-Map database instead of mapping')
+    database_path_arg = DeclareLaunchArgument('database_path', default_value='~/.ros/rtabmap.db', description='RTAB-Map database')
     slam_arg = DeclareLaunchArgument('slam', default_value='true', description='Run RTAB-Map and plan on its /map')
 
     # 1. Simulation Bridge / World (Spawns robot, Gazebo plugins, sensor bridges)
@@ -44,6 +46,8 @@ def generate_launch_description():
             'use_sim_time': 'true',
             'lidar_type': '5',
             'slam': LaunchConfiguration('slam'),
+            'slam_localization': LaunchConfiguration('slam_localization'),
+            'database_path': LaunchConfiguration('database_path'),
         }.items()
     )
 
@@ -81,6 +85,8 @@ def generate_launch_description():
         yaw_arg,
         world_arg,
         slam_arg,
+        slam_localization_arg,
+        database_path_arg,
         sim_launch,
         localization_launch,
         navigation_launch,

@@ -11,7 +11,7 @@ Start the sim first, e.g. in the south corridor of loop.sdf:
     ros2 launch intel_sys_bringup sim.launch.py headless:=true use_foxglove:=false \
         world:=loop.sdf x:=-6.0 y:=-3.5 slam:=false
 
-    python3 scripts/lio_drift_test.py --length 12 --legs 4
+    python3 scripts/eval/lio_drift_test.py --length 12 --legs 4
 
 Per leg it prints the error added on that leg: along-track (+ = Point-LIO
 thinks it went further), cross-track, and yaw.

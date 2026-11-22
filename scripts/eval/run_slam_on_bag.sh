@@ -2,7 +2,7 @@
 # Point-LIO + RTAB-Map on a recorded bag, with or without the D435 (CAMERA=1).
 #
 # Usage (inside the container, workspace built):
-#   [CAMERA=1] [START_OFFSET=s] bash scripts/run_slam_on_bag.sh <bag_dir> <out_prefix> [rate] [extra localization args]
+#   [CAMERA=1] [START_OFFSET=s] bash scripts/eval/run_slam_on_bag.sh <bag_dir> <out_prefix> [rate] [extra localization args]
 #
 # Plays the L2 cloud and IMU (and with CAMERA=1 the color image, the depth aligned
 # to color and the camera info) with --clock. The robot description gives the
@@ -41,7 +41,7 @@ OPT=$!
 ros2 launch intel_sys_localization localization.launch.py use_sim_time:=true slam:=true slam_camera:=$CAM \
   database_path:="$DB" "$@" > "$OUT.loc.log" 2>&1 &
 LOC=$!
-python3 -u scripts/lio_bag_eval.py --out "$OUT" --title "$(basename "$BAG") Point-LIO + RTAB-Map camera=$CAM $*" \
+python3 -u scripts/eval/lio_bag_eval.py --out "$OUT" --title "$(basename "$BAG") Point-LIO + RTAB-Map camera=$CAM $*" \
   --path-topic /rtabmap/mapPath > "$OUT.log" 2>&1 &
 EVAL=$!
 sleep 10

@@ -2,12 +2,12 @@
 # Run Point-LIO (+ body filter + frame adapter) on a recorded bag and evaluate it.
 #
 # Usage (inside the container, workspace built):
-#   bash scripts/run_lio_on_bag.sh <bag_dir> <out_prefix> [rate] [extra ros2 launch args...]
-#   e.g. bash scripts/run_lio_on_bag.sh bags/sensor_data_..._orientation_3 results/lio_o3
+#   bash scripts/eval/run_lio_on_bag.sh <bag_dir> <out_prefix> [rate] [extra ros2 launch args...]
+#   e.g. bash scripts/eval/run_lio_on_bag.sh bags/sensor_data_..._orientation_3 results/lio_o3
 #
 # Plays only /lidar/points_raw and /lidar/imu with --clock, runs the robot
 # description (for base_footprint -> lidar_link) and localization.launch.py
-# with use_sim_time, records with scripts/lio_bag_eval.py, and writes
+# with use_sim_time, records with scripts/eval/lio_bag_eval.py, and writes
 # <out_prefix>.png/.npz plus <out_prefix>.log. Point-LIO starts fresh each run.
 set -uo pipefail
 BAG=$1; OUT=$2; RATE=${3:-1.0}; shift 3 2>/dev/null || shift $#
@@ -32,7 +32,7 @@ ros2 launch intel_sys_description robot_description.launch.py use_sim_time:=true
 DESC=$!
 ros2 launch intel_sys_localization localization.launch.py use_sim_time:=true "$@" > "$OUT.loc.log" 2>&1 &
 LOC=$!
-python3 -u scripts/lio_bag_eval.py --out "$OUT" --title "$(basename "$BAG") rate $RATE $*" > "$OUT.log" 2>&1 &
+python3 -u scripts/eval/lio_bag_eval.py --out "$OUT" --title "$(basename "$BAG") rate $RATE $*" > "$OUT.log" 2>&1 &
 EVAL=$!
 sleep 8
 ros2 bag play "$BAG" --clock 200 -r "$RATE" --start-offset "${START_OFFSET:-0}" --topics /lidar/points_raw /lidar/imu > "$OUT.play.log" 2>&1

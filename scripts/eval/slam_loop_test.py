@@ -8,8 +8,8 @@ Phase 6 check from docs/ROADMAP.md, in simulation. Start the sim first:
 
 then, in the same container:
 
-    python3 scripts/slam_loop_test.py            # one lap, mapping
-    python3 scripts/slam_loop_test.py --check-only   # just compare poses now
+    python3 scripts/eval/slam_loop_test.py            # one lap, mapping
+    python3 scripts/eval/slam_loop_test.py --check-only   # just compare poses now
 
 It reports RTAB-Map loop/proximity closures seen during the run and, at each
 waypoint, the error of map->base_footprint (SLAM) and odom->base_footprint

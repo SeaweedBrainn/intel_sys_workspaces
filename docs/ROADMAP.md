@@ -31,7 +31,7 @@ Phases 1 through 4 can proceed now. The chain for Phases 5–7 already runs in t
 
 ## Simulation and bag results (branch `slam-chain`, 2026-11-22)
 
-The whole chain runs in Gazebo on the laptop (`intel-sys-sim`, amd64, rendering on the NVIDIA GPU under WSL via `docker-compose.wsl.yml`): `ros2 launch intel_sys_bringup sim.launch.py world:=loop.sdf x:=-6.5 y:=0.0` (SLAM is on by default in the sim bringup; off by default in `robot.launch.py`). Tools: `scripts/slam_loop_test.py` (Nav2 lap scored against Gazebo truth), `scripts/lio_drift_test.py` (straight corridor legs, Point-LIO only), `scripts/run_lio_on_bag.sh` (Point-LIO on a recorded bag), `scripts/bag_mount_check.py` (L2 mount from a bag's IMU gravity).
+The whole chain runs in Gazebo on the laptop (`intel-sys-sim`, amd64, rendering on the NVIDIA GPU under WSL via `docker-compose.wsl.yml`): `ros2 launch intel_sys_bringup sim.launch.py world:=loop.sdf x:=-6.5 y:=0.0` (SLAM is on by default in the sim bringup; off by default in `robot.launch.py`). Tools: `scripts/eval/slam_loop_test.py` (Nav2 lap scored against Gazebo truth), `scripts/eval/lio_drift_test.py` (straight corridor legs, Point-LIO only), `scripts/eval/run_lio_on_bag.sh` (Point-LIO on a recorded bag), `scripts/eval/bag_mount_check.py` (L2 mount from a bag's IMU gravity).
 
 **Phase 6 exit criterion met in simulation:**
 - **Mapping lap: PASS.** About 40 m around `loop.sdf`: Point-LIO alone ends 0.8 cm from ground truth; SLAM (map frame) stays within 8 cm; 4 proximity closures.

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Record Point-LIO's output while a bag plays, then report and draw it.
 
-Run by scripts/run_lio_on_bag.sh (bag playback + Point-LIO + adapter). Logs:
+Run by scripts/eval/run_lio_on_bag.sh (bag playback + Point-LIO + adapter). Logs:
   - /point_lio/raw_odom: trajectory (LiDAR pose in Point-LIO's level world frame)
   - lag: how far Point-LIO's output stamp trails the bag clock
   - /point_lio/raw_cloud_registered: accumulated, voxel-thinned map

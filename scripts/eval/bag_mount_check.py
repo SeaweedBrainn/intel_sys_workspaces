@@ -4,7 +4,7 @@
 Uses the L2's built-in IMU (gravity direction while still) and the point cloud
 (floor plane and where the returns are) in the sensor's own frame:
 
-    python3 scripts/bag_mount_check.py bags/<bag_dir> [--seconds 5]
+    python3 scripts/eval/bag_mount_check.py bags/<bag_dir> [--seconds 5]
 
 Reports, in the L2 frame:
   - gravity (the "down" direction) from the first still stretch of /lidar/imu

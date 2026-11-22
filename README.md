@@ -5,6 +5,7 @@ ROS 2 Humble workspace for an autonomous mecanum rover: a Jetson Orin NX with an
 - [Getting started](docs/GETTING_STARTED.md): set up a machine, bring up the robot, open the dashboard.
 - [Roadmap](docs/ROADMAP.md): current state, phases, decisions, open items.
 - [Localization results](docs/LOCALIZATION_RESULTS.md): what has been measured, in the sim and on bags.
+- [First robot test](docs/ROBOT_TEST_PLAN.md): step-by-step plan for running the chain on the rover.
 - [Dashboard](docs/DASHBOARD.md), [testing](docs/TESTING.md), [remote access](docs/REMOTE_ACCESS.md).
 
 ## Layout

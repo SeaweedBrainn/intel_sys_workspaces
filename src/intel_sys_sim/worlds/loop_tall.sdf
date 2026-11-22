@@ -1,0 +1,181 @@
+<?xml version="1.0" ?>
+<sdf version="1.8">
+  <world name="intel_sys_loop_tall">
+    <!-- Physics parameters -->
+    <physics name="1ms" type="ignored">
+      <max_step_size>0.001</max_step_size>
+      <real_time_factor>1.0</real_time_factor>
+    </physics>
+
+    <!-- Essential System Plugins -->
+    <plugin filename="gz-sim-physics-system" name="gz::sim::systems::Physics"/>
+    <plugin filename="gz-sim-user-commands-system" name="gz::sim::systems::UserCommands"/>
+    <plugin filename="gz-sim-scene-broadcaster-system" name="gz::sim::systems::SceneBroadcaster"/>
+    <plugin filename="gz-sim-sensors-system" name="gz::sim::systems::Sensors">
+      <render_engine>ogre2</render_engine>
+    </plugin>
+    <plugin filename="gz-sim-imu-system" name="gz::sim::systems::Imu"/>
+
+    <!-- Sunlight -->
+    <light type="directional" name="sun">
+      <cast_shadows>true</cast_shadows>
+      <pose>0 0 10 0 0 0</pose>
+      <diffuse>0.8 0.8 0.8 1</diffuse>
+      <specular>0.2 0.2 0.2 1</specular>
+      <attenuation>
+        <range>1000</range>
+        <constant>0.9</constant>
+        <linear>0.01</linear>
+        <quadratic>0.001</quadratic>
+      </attenuation>
+      <direction>-0.5 0.1 -0.9</direction>
+    </light>
+
+    <!-- Ground Plane -->
+    <model name="ground_plane">
+      <static>true</static>
+      <link name="link">
+        <collision name="collision">
+          <geometry>
+            <plane>
+              <normal>0 0 1</normal>
+              <size>100 100</size>
+            </plane>
+          </geometry>
+        </collision>
+        <visual name="visual">
+          <geometry>
+            <plane>
+              <normal>0 0 1</normal>
+              <size>100 100</size>
+            </plane>
+          </geometry>
+          <material>
+            <ambient>0.8 0.8 0.8 1</ambient>
+            <diffuse>0.8 0.8 0.8 1</diffuse>
+            <specular>0.8 0.8 0.8 1</specular>
+          </material>
+        </visual>
+      </link>
+    </model>
+
+    <!-- loop.sdf with 2.5 m walls and a ceiling, like a building corridor.
+         Loop world for SLAM testing (Phase 6): a 3 m corridor around a central
+         block, 16 x 10 m outside. Irregular features along the walls keep ICP
+         from sliding along the straight corridors and make places distinct.
+         Spawn with x:=-6.5 y:=0.0 (west corridor, facing +x). -->
+    <model name="wall_north">
+      <static>true</static>
+      <pose>0 5.1 1.25 0 0 0.0</pose>
+      <link name="link">
+        <collision name="col"><geometry><box><size>16.4 0.2 2.5</size></box></geometry></collision>
+        <visual name="vis"><geometry><box><size>16.4 0.2 2.5</size></box></geometry><material><diffuse>0.6 0.6 0.6 1</diffuse></material></visual>
+      </link>
+    </model>
+    <model name="wall_south">
+      <static>true</static>
+      <pose>0 -5.1 1.25 0 0 0.0</pose>
+      <link name="link">
+        <collision name="col"><geometry><box><size>16.4 0.2 2.5</size></box></geometry></collision>
+        <visual name="vis"><geometry><box><size>16.4 0.2 2.5</size></box></geometry><material><diffuse>0.6 0.6 0.6 1</diffuse></material></visual>
+      </link>
+    </model>
+    <model name="wall_east">
+      <static>true</static>
+      <pose>8.1 0 1.25 0 0 0.0</pose>
+      <link name="link">
+        <collision name="col"><geometry><box><size>0.2 10.0 2.5</size></box></geometry></collision>
+        <visual name="vis"><geometry><box><size>0.2 10.0 2.5</size></box></geometry><material><diffuse>0.6 0.6 0.6 1</diffuse></material></visual>
+      </link>
+    </model>
+    <model name="wall_west">
+      <static>true</static>
+      <pose>-8.1 0 1.25 0 0 0.0</pose>
+      <link name="link">
+        <collision name="col"><geometry><box><size>0.2 10.0 2.5</size></box></geometry></collision>
+        <visual name="vis"><geometry><box><size>0.2 10.0 2.5</size></box></geometry><material><diffuse>0.6 0.6 0.6 1</diffuse></material></visual>
+      </link>
+    </model>
+    <model name="center_block">
+      <static>true</static>
+      <pose>0 0 1.25 0 0 0.0</pose>
+      <link name="link">
+        <collision name="col"><geometry><box><size>10.0 4.0 2.5</size></box></geometry></collision>
+        <visual name="vis"><geometry><box><size>10.0 4.0 2.5</size></box></geometry><material><diffuse>0.7 0.6 0.5 1</diffuse></material></visual>
+      </link>
+    </model>
+    <model name="south_bay">
+      <static>true</static>
+      <pose>-2.0 -4.6 0.5 0 0 0.0</pose>
+      <link name="link">
+        <collision name="col"><geometry><box><size>1.2 0.8 1.0</size></box></geometry></collision>
+        <visual name="vis"><geometry><box><size>1.2 0.8 1.0</size></box></geometry><material><diffuse>0.8 0.3 0.3 1</diffuse></material></visual>
+      </link>
+    </model>
+    <model name="south_crate">
+      <static>true</static>
+      <pose>3.5 -2.45 0.5 0 0 0.4</pose>
+      <link name="link">
+        <collision name="col"><geometry><box><size>0.6 0.6 1.0</size></box></geometry></collision>
+        <visual name="vis"><geometry><box><size>0.6 0.6 1.0</size></box></geometry><material><diffuse>0.8 0.6 0.2 1</diffuse></material></visual>
+      </link>
+    </model>
+    <model name="south_pillar">
+      <static>true</static>
+      <pose>6.0 -4.5 0.5 0 0 0</pose>
+      <link name="link">
+        <collision name="col"><geometry><cylinder><radius>0.2</radius><length>1.0</length></cylinder></geometry></collision>
+        <visual name="vis"><geometry><cylinder><radius>0.2</radius><length>1.0</length></cylinder></geometry><material><diffuse>0.2 0.5 0.8 1</diffuse></material></visual>
+      </link>
+    </model>
+    <model name="east_shelf">
+      <static>true</static>
+      <pose>7.6 1.5 0.5 0 0 0.0</pose>
+      <link name="link">
+        <collision name="col"><geometry><box><size>0.8 2.0 1.0</size></box></geometry></collision>
+        <visual name="vis"><geometry><box><size>0.8 2.0 1.0</size></box></geometry><material><diffuse>0.3 0.3 0.8 1</diffuse></material></visual>
+      </link>
+    </model>
+    <model name="north_pillar_a">
+      <static>true</static>
+      <pose>4.0 4.5 0.5 0 0 0</pose>
+      <link name="link">
+        <collision name="col"><geometry><cylinder><radius>0.2</radius><length>1.0</length></cylinder></geometry></collision>
+        <visual name="vis"><geometry><cylinder><radius>0.2</radius><length>1.0</length></cylinder></geometry><material><diffuse>0.2 0.5 0.8 1</diffuse></material></visual>
+      </link>
+    </model>
+    <model name="north_pillar_b">
+      <static>true</static>
+      <pose>1.0 4.5 0.5 0 0 0</pose>
+      <link name="link">
+        <collision name="col"><geometry><cylinder><radius>0.3</radius><length>1.0</length></cylinder></geometry></collision>
+        <visual name="vis"><geometry><cylinder><radius>0.3</radius><length>1.0</length></cylinder></geometry><material><diffuse>0.2 0.5 0.8 1</diffuse></material></visual>
+      </link>
+    </model>
+    <model name="north_crate">
+      <static>true</static>
+      <pose>-3.5 2.35 0.5 0 0 0.8</pose>
+      <link name="link">
+        <collision name="col"><geometry><box><size>0.8 0.8 1.0</size></box></geometry></collision>
+        <visual name="vis"><geometry><box><size>0.8 0.8 1.0</size></box></geometry><material><diffuse>0.8 0.6 0.2 1</diffuse></material></visual>
+      </link>
+    </model>
+    <model name="west_shelf">
+      <static>true</static>
+      <pose>-7.6 -2.0 0.5 0 0 0.0</pose>
+      <link name="link">
+        <collision name="col"><geometry><box><size>0.8 1.5 1.0</size></box></geometry></collision>
+        <visual name="vis"><geometry><box><size>0.8 1.5 1.0</size></box></geometry><material><diffuse>0.3 0.8 0.3 1</diffuse></material></visual>
+      </link>
+    </model>
+
+    <model name="ceiling">
+      <static>true</static>
+      <pose>0 0 2.55 0 0 0</pose>
+      <link name="link">
+        <collision name="col"><geometry><box><size>16.4 10.4 0.1</size></box></geometry></collision>
+        <visual name="vis"><geometry><box><size>16.4 10.4 0.1</size></box></geometry><material><diffuse>0.9 0.9 0.9 1</diffuse></material></visual>
+      </link>
+    </model>
+  </world>
+</sdf>

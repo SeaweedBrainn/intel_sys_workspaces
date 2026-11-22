@@ -36,7 +36,7 @@ The script builds with `colcon build --symlink-install --parallel-workers 6`, so
 
 **Overlay requirement:** the hardware unit tests (`src/intel_sys_hardware/test/`) import `rclpy` and the `intel_sys_interfaces` messages. They fail unless the workspace overlay is built and sourced. That is why the script sources `install/setup.bash` before `colcon test`. The `install/` tree on the host is stale, so the first run must build.
 
-Package tests are in `src/intel_sys_hardware/test/` and `src/intel_sys_localization/test/`; the script also runs the dashboard and autonomy tests in `scripts/` with `pytest`. CI (`.github/workflows/tests.yml`) runs the same tests on every push and pull request.
+Package tests are in `src/intel_sys_hardware/test/` and `src/intel_sys_localization/test/`; the script also runs the dashboard and autonomy tests in `scripts/` with `pytest`. CI (`.github/workflows/tests.yml`) runs the same tests on pull requests.
 
 ## T4 warmup (read-only)
 

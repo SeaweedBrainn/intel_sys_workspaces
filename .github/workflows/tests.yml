@@ -1,11 +1,12 @@
-# Unit tests on every push and pull request, in a stock ROS 2 Humble container.
+# Unit tests on pull requests, in a stock ROS 2 Humble container. Can also be
+# started by hand from the Actions tab (workflow_dispatch) on any branch.
 # Builds only the packages with tests (and what they depend on in this repo);
 # the full stack needs the Docker images (Gazebo, Point-LIO, RTAB-Map).
 name: tests
 
 on:
-  push:
   pull_request:
+  workflow_dispatch:
 
 jobs:
   test:

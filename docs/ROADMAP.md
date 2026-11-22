@@ -40,7 +40,8 @@ The whole chain runs in Gazebo on the laptop (`intel-sys-sim`, amd64, rendering 
 
 **Real L2 bags** (Hemang's recordings, three mounts plus half of a hallway run; not in git, see `bags/`):
 - Mounts from the L2's IMU gravity: orientation 1 ("0°") has the dome 83° from vertical, i.e. facing horizontally, matching the current URDF; orientation 2 ("45°") 39°; orientation 3 ("90°") 0.7°, i.e. dome pointing straight up. Which way the dome faces horizontally is not given by gravity.
-- Point-LIO keeps up in real time on all of them (0.02 s behind, ~30% of a core) and tracks plausibly: the 306 s hallway run (orientation 1) gives a clean three-corridor map over 92 m, with ~1.2 m of height drift (ignored by the planar odom and RTAB-Map's 3-DoF).
+- Point-LIO keeps up in real time on all of them (0.02 s behind, ~30% of a core) and tracks plausibly: the 306 s hallway run (orientation 1) gives a clean three-corridor map over 92 m. Its height rises ~1.2 m, but the building has slopes and none of the bags passes the same spot twice, so height drift can't be measured from them (navigation ignores height anyway: planar odom, RTAB-Map 3-DoF).
+- The L2's accelerometer reads 9.67–10.02 m/s² at rest depending on which axis faces down (uncalibrated MEMS bias/scale). Setting Point-LIO's `acc_norm` to the reading made tracking much worse (one bag diverged), so keep 9.81 and let Point-LIO's bias estimate absorb it.
 - The short orientation-1 bag diverges from its start: a jolt plus ~0.2 s of missing IMU data 2 s in, while Point-LIO's map is still tiny. Started 3 s in, it tracks fine. **Start Point-LIO with the robot still.**
 - Real L2 data: ~5,300 points per scan at 12 Hz, genuine per-point times over a ~0.08 s sweep, `ring` always 1.
 
@@ -59,6 +60,7 @@ Next:
 - [ ] Point-LIO on the Jetson: measure CPU and lag with a bag played on the Orin NX.
 - [ ] Without a camera there is no global relocalization: the robot must start at the map origin or be given `/rtabmap/initialpose`. Add a "set pose" control to the dashboard, or a fixed home spot.
 - [ ] Guard against Point-LIO divergence (e.g. reset when its speed exceeds what the robot can do), since one jolt plus an IMU gap at start-up was enough.
+- [ ] Measure height drift properly: record a drive that ends exactly where it started (floor mark), on level ground.
 - [ ] Settle which way the L2 dome faces (URDF yaw) from a bag with a known direction, or the mechanical drawings.
 
 ## Decisions

@@ -45,7 +45,11 @@ Autonomy is early. Point-LIO, RTAB-Map and Nav2 run in the sim and on recorded b
 
    `run_docker.sh` detects x86_64 or ARM64 and picks the compose overlay. Use `--cpu` or `--nvidia` to force one.
 
-4. **Give the STM32 a stable device name.** Confirm the board shows up as `/dev/rrc`. If it does not, check the udev rule or the USB cable before going further.
+4. **Give the STM32 a stable device name.** Install the udev rules once, then confirm the board shows up as `/dev/rrc`. If it does not, check the USB cable before going further.
+
+   ```bash
+   sudo src/intel_sys_hardware/udev/install_udev_rules.sh
+   ```
 
 5. **Give the LiDAR a fixed address.** Set the wired interface to `192.168.1.x/24` and confirm the sensor answers:
 
@@ -131,6 +135,10 @@ Tokens live in `~/.config/robot-dashboard/` on the robot (`token` and `view_toke
 | `docs/TESTING.md`, `docs/REMOTE_ACCESS.md` | Test tiers and remote access |
 | `docs/ROADMAP.md` | Status and next phases |
 | `docs/LOCALIZATION_RESULTS.md` | Localization measurements |
+
+## Foxglove
+
+The sim and `robot.launch.py` start a Foxglove bridge on port 8765. In [Foxglove](https://app.foxglove.dev), open a connection to `ws://localhost:8765` (or `ws://<robot-ip>:8765`) and import `src/intel_sys_bringup/config/foxglove_layout.json` for a 3D view, the camera, IMU plots and teleop.
 
 ## Known gotchas
 

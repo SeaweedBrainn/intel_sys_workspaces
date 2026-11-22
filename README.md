@@ -1,160 +1,46 @@
-# Intel Sys Mobile Robot Platform
+# Intel Sys mobile robot
 
-Modular ROS 2 Humble workspace and multi-stage Docker environment for the Intel Sys mecanum mobile robot.
+ROS 2 Humble workspace for an autonomous mecanum rover: a Jetson Orin NX with an STM32 motor board, a Unitree L2 LiDAR and a RealSense D435. Localization is **Point-LIO → RTAB-Map → Nav2**. It runs in the Gazebo sim and on recorded bags; it has not yet run on the robot. Everything runs in Docker.
 
----
+- [Getting started](docs/GETTING_STARTED.md): set up a machine, bring up the robot, open the dashboard.
+- [Roadmap](docs/ROADMAP.md): current state, phases, decisions, open items.
+- [Localization results](docs/LOCALIZATION_RESULTS.md): what has been measured, in the sim and on bags.
+- [Dashboard](docs/DASHBOARD.md), [testing](docs/TESTING.md), [remote access](docs/REMOTE_ACCESS.md).
 
-## Architecture Overview
+## Layout
 
-The codebase is organized into **7 core decoupled ROS 2 packages** under `src/` with pre-compiled third-party sensor dependencies isolated in the Docker image:
+| Path | What |
+|---|---|
+| `src/intel_sys_hardware` | STM32 bridge, mecanum controller, wheel odometry, LiDAR and camera launch files, udev rules |
+| `src/intel_sys_interfaces` | STM32 board messages and services |
+| `src/intel_sys_description` | URDF and meshes |
+| `src/intel_sys_localization` | Point-LIO and RTAB-Map launch and config, frame adapter, LiDAR body filter |
+| `src/intel_sys_navigation` | Nav2 config (STVL costmaps) |
+| `src/intel_sys_sim` | Gazebo Fortress worlds, simulated L2, `ros_gz_bridge` |
+| `src/intel_sys_bringup` | Top-level `sim.launch.py`, `robot.launch.py`, teleop |
+| `scripts/` | Dashboard, autonomy, robot checks and tests; `scripts/eval/` evaluates localization |
+| `third_party/robot.repos` | Pinned Point-LIO, Unitree SDK and RealSense sources, built into the images |
+| `Dockerfile.rover`, `Dockerfile.sim` | Jetson (arm64) and laptop (amd64, with Gazebo) images |
+| `docker-compose*.yml` | Dev containers, GPU, WSL and Zenoh overlays, and the robot's stacks (`docker-compose.robot.yml`) |
 
-```text
-intel_sys_workspaces/
-├── docker/                     # Container entrypoints and environment scripts
-├── third_party/                # Pinned third-party upstream repositories (robot.repos)
-├── src/
-│   ├── intel_sys_interfaces/   # Custom STM32 message and service definitions
-│   ├── intel_sys_hardware/     # STM32 bridge, mecanum controller, raw wheel odom publisher & sensor drivers
-│   ├── intel_sys_description/  # Unified robot URDF/Xacro, 3D meshes & state publisher
-│   ├── intel_sys_localization/ # Point-LIO 3D LiDAR-inertial odometry & frame adapter
-│   ├── intel_sys_navigation/   # Nav2 stack configuration with STVL 3D costmaps & path planning
-│   ├── intel_sys_sim/          # Gazebo Harmonic simulation, worlds, and ros_gz_bridge
-│   └── intel_sys_bringup/      # Top-level system coordinators and Foxglove Studio dashboard
-├── run_docker.sh               # Universal runner (auto-detects Desktop x86_64 vs Jetson ARM64)
-├── Dockerfile                  # Multi-stage Docker build with Gazebo Harmonic & Foxglove bridge
-└── docker-compose.yml          # Container service definition with USB/GPU pass-through
-```
+## Quick start
 
----
-
-## Package Summary
-
-| Package | Type | Description |
-| :--- | :--- | :--- |
-| **`intel_sys_interfaces`** | `ament_cmake` | 15 custom ROS 2 messages (`MotorsState`, `MotorState`, `LedState`, `BuzzerState`, `ButtonState`, `Sbus`, `OLEDState`, `BusServoState`, `PWMServoState`) and 2 services. |
-| **`intel_sys_hardware`** | `ament_python` | STM32 serial driver bridge (`stm32_bridge`), inverse mecanum velocity controller (`mecanum_controller`), raw wheel odometry publisher (`odom_publisher`), sensor launchers, and udev rules. |
-| **`intel_sys_description`** | `ament_cmake` | Unified `robot.urdf.xacro`, chassis and mecanum wheel STL meshes, Gazebo `MecanumDrive` and sensor plugins, and one-click `view_robot.launch.py`. |
-| **`intel_sys_localization`** | `ament_python` | Point-LIO 3D LiDAR-inertial odometry, dynamic REP-105 URDF frame adapter, and robot body bounding box filter. |
-| **`intel_sys_navigation`** | `ament_cmake` | Nav2 omnidirectional navigation stack with Spatio-Temporal Voxel Layer (STVL 3D costmaps) and DWB controller. |
-| **`intel_sys_sim`** | `ament_cmake` | Gazebo Harmonic simulation environment (`default.sdf`), model spawner, and `ros_gz_bridge` configuration. |
-| **`intel_sys_bringup`** | `ament_cmake` | Top-level system coordinators: `robot.launch.py`, `sim.launch.py`, `teleop.launch.py`, and `foxglove_layout.json`. |
-
----
-
-## Quick Start with `run_docker.sh`
-
-[`run_docker.sh`](run_docker.sh) auto-detects whether you are running on an **x86_64 PC/WSL** or an **ARM64 NVIDIA Jetson Orin NX** and manages a shared multi-terminal container:
+On a laptop (simulation):
 
 ```bash
-# 1. Start or attach to the shared container shell (auto-detects NVIDIA RTX GPU on Desktop / Tegra on Jetson):
-./run_docker.sh
-
-# 2. Force specific GPU/CPU modes (optional):
-./run_docker.sh --nvidia     # Force NVIDIA GPU pass-through
-./run_docker.sh --cpu        # Force standard CPU mode
-
-# 3. Rebuild the image before entering:
-./run_docker.sh --build
-
-# 4. Stop the container when finished:
-./run_docker.sh --down
-
-# 5. Run any ROS 2 command directly inside the container:
-./run_docker.sh ros2 launch intel_sys_bringup robot.launch.py
-./run_docker.sh colcon test
+./run_docker.sh --build                  # first time: build the sim image (~20 GB)
+./run_docker.sh bash scripts/run_tests.sh
+./run_docker.sh ros2 launch intel_sys_bringup sim.launch.py world:=loop.sdf x:=-6.5 y:=0.0
 ```
 
----
+`run_docker.sh` picks the image for the machine (sim on x86_64, rover on the Jetson) and adds the NVIDIA and WSL overlays when it finds them.
 
-## Remote Access
-
-The Jetson is reachable over SSH via Tailscale (`ssh jetson`), so you can build, test, and drive it from your laptop (including with Claude Code). See [docs/REMOTE_ACCESS.md](docs/REMOTE_ACCESS.md) for setup.
-
----
-
-## Hardware Setup (One-Time Setup on Host)
-
-To ensure the STM32 microcontroller binds consistently to `/dev/rrc` with read/write permissions:
+On the robot:
 
 ```bash
-cd src/intel_sys_hardware/udev
-sudo ./install_udev_rules.sh
+scripts/robot.sh up                  # Zenoh router, STM32, LiDAR, robot description
+scripts/dashboard.sh                 # dashboard, last
+scripts/robot.sh up localization     # Point-LIO + RTAB-Map, robot standing still
 ```
 
----
-
-## Launching the System
-
-### 1. Launch the Physical Robot (Master Command)
-
-Starts the entire stack (robot description + STM32 bridge + sensors + Point-LIO localization + Nav2 with STVL 3D costmaps + Foxglove WebSocket Bridge):
-
-```bash
-./run_docker.sh ros2 launch intel_sys_bringup robot.launch.py
-```
-
-### 2. Launch 3D Simulation (Gazebo Harmonic + Nav2 + Foxglove Bridge)
-
-Spins up the Gazebo obstacle world, spawns the robot model with Mecanum drive physics, runs Point-LIO localization, starts Nav2 autonomous planning, and launches the Foxglove WebSocket bridge:
-
-```bash
-# Simulation with Gazebo GUI + Foxglove WebSocket bridge:
-./run_docker.sh ros2 launch intel_sys_bringup sim.launch.py
-
-# Headless Simulation (for CI / automated testing):
-./run_docker.sh ros2 launch intel_sys_bringup sim.launch.py headless:=true
-```
-
-### 3. Preview 3D Robot Description
-
-To inspect the URDF, meshes, coordinate frames, and joint sliders:
-
-```bash
-./run_docker.sh ros2 launch intel_sys_description view_robot.launch.py
-```
-
-### 4. Teleoperation
-
-Control the mobile base using keyboard or joystick:
-
-```bash
-# Keyboard teleoperation:
-./run_docker.sh ros2 run teleop_twist_keyboard teleop_twist_keyboard
-
-# Gamepad joystick:
-./run_docker.sh ros2 launch intel_sys_bringup teleop.launch.py use_joy:=true joy_dev:=/dev/input/js0
-```
-
----
-
-## Visualization with Foxglove Studio
-
-The workspace uses **Foxglove Studio** for high-performance, cross-platform telemetry and 3D visualization without X11/GUI forwarding latency:
-
-1. Download and open [Foxglove Studio](https://foxglove.dev/download) (or open `https://app.foxglove.dev` in your browser).
-2. Click **Open connection** and connect to:
-   ```text
-   ws://localhost:8765
-   ```
-   *(or `ws://<jetson-ip>:8765` when running remotely on real robot)*
-3. Import the pre-configured layout:
-   * In Foxglove Studio, go to **Layout** $\to$ **Import from file...**
-   * Select [`src/intel_sys_bringup/config/foxglove_layout.json`](src/intel_sys_bringup/config/foxglove_layout.json).
-   * This dashboard opens a 3D scene (`/lidar/points`, `/robot_description`, `/odom`, TF tree), real-time camera stream (`/camera/image_raw`), live IMU acceleration/gyro plots, and teleoperation controls.
-
----
-
-## Testing & Verification
-
-Run the full automated test suite inside the container:
-
-```bash
-# Build all packages:
-./run_docker.sh colcon build --symlink-install
-
-# Run all unit tests:
-./run_docker.sh colcon test
-
-# View test summary:
-./run_docker.sh colcon test-result --all --verbose
-```
+The front of the robot is the sensor side: `+x` and teleop "forward" drive toward the LiDAR and camera.

@@ -12,7 +12,7 @@ The robot is a mecanum base with:
 
 Everything runs in Docker containers, with ROS 2 Humble and `rmw_zenoh_cpp` as the middleware. A `zenohd` router container runs alongside them.
 
-Autonomy is still early. Localization and Nav2 are disabled, and there is no SLAM map yet. See [ROADMAP.md](ROADMAP.md) for what works and what is next.
+Autonomy is early. Point-LIO, RTAB-Map and Nav2 run in the sim and on recorded bags but have not yet run on the robot. See [ROADMAP.md](ROADMAP.md) for what works and what is next.
 
 ## Hardware and network checklist
 
@@ -29,12 +29,12 @@ Autonomy is still early. Localization and Nav2 are disabled, and there is no SLA
 
 1. **Install prerequisites.** Docker Engine with the compose plugin, Git, and Tailscale. On the Jetson, also install the NVIDIA container runtime.
 
-2. **Clone the repo** and check out the working branch (`ahmad-zenoh` at the time of writing):
+2. **Clone the repo** and check out the working branch (`slam-chain` at the time of writing):
 
    ```bash
    git clone <repo-url> intel_sys_workspaces
    cd intel_sys_workspaces
-   git checkout ahmad-zenoh
+   git checkout slam-chain
    ```
 
 3. **Build the rover image.** This takes a while and needs about 20 GB of disk:
@@ -66,30 +66,31 @@ Autonomy is still early. Localization and Nav2 are disabled, and there is no SLA
 
 ## Daily bring-up
 
-Start the layers in this order. The dashboard must start last, after its inputs exist, because it reads TF and topics once when it starts.
+Each stack is a compose service in `docker-compose.robot.yml`, driven by `scripts/robot.sh`. Start the dashboard last, after its inputs exist, because it reads TF and topics once when it starts.
 
 ```bash
-# 1. STM32 bridge, mecanum controller, wheel odometry
-docker compose -f docker-compose.yml -f docker-compose.zenoh.yml run -d --rm --name stm32stack \
-  intel-sys-rover bash -c 'source /opt/ros/humble/setup.bash && source /workspaces/intel_sys/install/setup.bash && exec ros2 launch intel_sys_hardware stm32.launch.py'
-
-# 2. LiDAR driver plus robot description (TF tree)
-docker compose -f docker-compose.yml -f docker-compose.zenoh.yml run -d --rm --name lidarstack \
-  intel-sys-rover bash -c 'source /opt/ros/humble/setup.bash && source /workspaces/intel_sys/install/setup.bash && (ros2 launch intel_sys_description robot_description.launch.py &) ; exec ros2 launch intel_sys_hardware lidar.launch.py'
-
-# 3. Dashboard (last)
-scripts/dashboard.sh
+scripts/robot.sh up                 # Zenoh router, STM32 stack, LiDAR driver, robot description
+scripts/dashboard.sh                # dashboard (last)
+scripts/robot.sh up localization    # optional: Point-LIO + RTAB-Map, mapping a new map
+scripts/robot.sh up navigation      # optional: also Nav2 on RTAB-Map's map
 ```
+
+Start localization with the robot standing still. To re-localize on the last saved map instead of mapping, use `SLAM_LOCALIZATION=true scripts/robot.sh up localization`; the database is `data/rtabmap.db`. `SLAM_CAMERA=true` adds the D435 to RTAB-Map once the camera runs.
+
+The drivers, the robot description and the dashboard restart on their own after a crash or a reboot. Localization and navigation do not: a restart would re-anchor odometry wherever the robot is, and a mapping restart wipes the map.
+
+**Nav2 publishes `/cmd_vel` too.** While navigation runs, the dashboard e-stop does not stop Nav2's goal. Stop it with `scripts/robot.sh stop navigation`, and keep a hand on the physical stop.
 
 Check the state before you use it:
 
 ```bash
-docker ps --format '{{.Names}}\t{{.Status}}'   # stm32stack, lidarstack, robot-dashboard, intel-sys-zenohd
+scripts/robot.sh ps
+scripts/robot.sh logs -f lidar      # follow one stack's log
 ```
 
-In the dashboard status, `rates_hz` should show roughly `odom 50`, `imu 50`, and `lidar 12`. A `base_footprint<-lidar_link` warning means TF is missing. Restart the dashboard (`scripts/dashboard.sh --stop`, then `scripts/dashboard.sh`) once the robot description is up.
+In the dashboard status, `rates_hz` should show roughly `odom 50`, `imu 50`, and `lidar 12`. A `base_footprint<-lidar_link` warning means TF is missing. Restart the dashboard (`scripts/dashboard.sh`) once the robot description is up.
 
-Stop everything with `scripts/dashboard.sh --stop` and `docker stop stm32stack lidarstack`. The dashboard zeros the wheels on the way out.
+Stop a stack with `scripts/robot.sh stop <service>`; stop everything with `scripts/dashboard.sh --stop` and `scripts/robot.sh stop`. The dashboard zeros the wheels on the way out.
 
 ## Opening the dashboard
 
@@ -123,15 +124,18 @@ Tokens live in `~/.config/robot-dashboard/` on the robot (`token` and `view_toke
 | `scripts/autonomy/waypoint.py` | Map and waypoint following (pure logic) |
 | `scripts/dashboard.sh`, `scripts/dashboard_url.sh` | Start or stop the dashboard; print its links |
 | `src/intel_sys_hardware/launch/` | STM32 and LiDAR launch files |
-| `src/intel_sys_navigation/` | Nav2 config (not running yet) |
+| `src/intel_sys_navigation/` | Nav2 config |
+| `docker-compose.robot.yml`, `scripts/robot.sh` | The robot's stacks as compose services |
+| `scripts/eval/` | Localization evaluation on bags and in the sim |
 | `docs/DASHBOARD.md` | Dashboard API, safety rules, and tests |
 | `docs/TESTING.md`, `docs/REMOTE_ACCESS.md` | Test tiers and remote access |
 | `docs/ROADMAP.md` | Status and next phases |
+| `docs/LOCALIZATION_RESULTS.md` | Localization measurements |
 
 ## Known gotchas
 
 - **Start order matters.** Start the dashboard after the STM32 and LiDAR stacks, or restart it afterward. Under the zenoh middleware, subscribers do not always re-match after a publisher restarts (see the roadmap).
-- **Camera is off.** `/camera/image_raw` is at 0 Hz because no camera node is launched. Nothing in the dashboard depends on it.
+- **Camera is off.** `/camera/image_raw` is at 0 Hz because no camera node is launched. Nothing in the dashboard depends on it; RTAB-Map only uses it with `SLAM_CAMERA=true`.
 - **The front is the sensor side, and the rear is blind.** Since 2026-11-22, `+vx` (teleop "forward") drives toward the L2 and the D435; the switch is `forward_is_sensor_side` in `stm32.launch.py` (default true; false restores the old motor-convention front). Only the half the sensors face is seen. Check the sector readings in dry mode before any live run.
 - **Odometry drifts.** The map and waypoints are in the odometry frame. They are good for short runs only.
 - **Mecanum watchdog warnings.** While the dashboard is idle, the controller logs "cmd_vel stale … wheels commanded to zero" about every two seconds. That is the safety watchdog working.

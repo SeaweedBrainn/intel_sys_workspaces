@@ -31,6 +31,7 @@ Phases 1 through 4 can proceed now. Phases 5–7 already run in the sim and on b
 ## Next
 
 - [ ] Rebuild the rover image and run the chain on the robot (`slam:=true`), robot still at start-up.
+- [ ] Switch the Jetson to the compose services (`scripts/robot.sh up`). Stop the hand-run `stm32stack`, `lidarstack` and `robot-dashboard` first; the services reuse those names.
 - [ ] Point-LIO on the Jetson: measure CPU and lag with a bag played on the Orin NX (about 30% of a laptop core at 0.1 m voxels; if it falls behind, switch to 0.4 m voxels).
 - [ ] Deploy the sensor-side front on the Jetson: controller and dashboard together; tell the team teleop "forward" has flipped.
 - [ ] Record a loop that ends exactly where it started (floor mark), with the camera on: measures drift, including height on level ground, and shows whether the camera's loop closures (`slam_camera:=true`) help.
@@ -56,9 +57,9 @@ Disk: about 27 GB free, and each image is about 20 GB. Pruning old images (`auto
 
 ## Infrastructure
 
-- [ ] **Stacks as compose services.** Add `stm32`, `lidar` (camera later), `localization` (Point-LIO + RTAB-Map), `navigation` and `dashboard` services alongside `zenohd`, sharing one block of common settings (image, host network/IPC, `docker/zenoh.env`, workspace mount). Each service runs one launch file. Replaces the hand-typed `docker run` commands.
-- [ ] **Restart policy.** `restart: unless-stopped` and `depends_on: zenohd` on every service so the robot comes back after a reboot or crash. Until the rmw_zenoh resubscribe bug (TODO below) is fixed, restart in order: stm32 → lidar → dashboard.
-- [ ] **Least privilege.** Drop `privileged` from the dashboard (it is the tailnet-exposed one); give hardware containers only the devices they need (`/dev/rrc`, etc.).
+- [x] **Stacks as compose services.** Done in `docker-compose.robot.yml` (`scripts/robot.sh`); not yet run on the Jetson.
+- [x] **Restart policy.** Drivers, description and dashboard `unless-stopped`; localization and navigation started per session.
+- [x] **Least privilege.** Only the STM32 stack is privileged; the rest have no device access and a read-only workspace (the dashboard writes).
 - [ ] **Host `ros2` CLI.** A plain SSH shell uses FastRTPS and sees nothing. Use `docker exec` into a stack container, or source `docker/zenoh.env` first.
 - [ ] **`hardware.launch.py` STM32 line.** Revert the comment-out, or commit it with a note, so `robot.launch.py` does not silently start without motor control.
 

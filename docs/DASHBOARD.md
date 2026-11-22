@@ -12,11 +12,10 @@ scripts/dashboard.sh --stop     # stops it; the wheels are zeroed on the way out
 docker logs robot-dashboard 2>&1 | grep token     # the access token
 ```
 
-The STM32 stack must be running for live data and drive commands:
+The robot's stacks must be running for live data and drive commands; start them first:
 
 ```bash
-docker compose -f docker-compose.yml -f docker-compose.zenoh.yml run -d --rm --name stm32stack \
-  intel-sys-rover bash -c 'source /opt/ros/humble/setup.bash && source /workspaces/intel_sys/install/setup.bash && exec ros2 launch intel_sys_hardware stm32.launch.py'
+scripts/robot.sh up             # STM32, LiDAR, robot description (see GETTING_STARTED.md)
 ```
 
 ## Reaching it

@@ -20,3 +20,6 @@ bags/
 *.bag
 results/*
 !results/.gitkeep
+
+# Robot runtime data (RTAB-Map database)
+data/

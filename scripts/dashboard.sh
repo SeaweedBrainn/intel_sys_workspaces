@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Start the robot dashboard in the rover container (host networking, Zenoh overlay).
+# Start the robot dashboard (the dashboard service in docker-compose.robot.yml).
 #
 # Usage:
 #   scripts/dashboard.sh            # start in background, print URL and token
@@ -21,7 +21,6 @@ if [[ "${1:-}" == "--stop" ]]; then
   exit 0
 fi
 
-docker rm -f "$NAME" >/dev/null 2>&1 || true
 
 # Stable token: read from a file outside the repo (created on first start, mode 600),
 # so a bookmarked URL keeps working across restarts. Override with DASHBOARD_TOKEN.
@@ -51,12 +50,10 @@ export DASHBOARD_VIEW_TOKEN
 TS_IP="$(tailscale ip -4 2>/dev/null | head -1 || true)"
 HOST_BIND="${DASHBOARD_HOST:-${TS_IP:-127.0.0.1}}"
 
-docker compose -f docker-compose.yml -f docker-compose.zenoh.yml run -d --rm --name "$NAME" \
-  -e DASHBOARD_HOST="$HOST_BIND" \
-  -e DASHBOARD_PORT="$PORT" \
-  ${DASHBOARD_TOKEN:+-e DASHBOARD_TOKEN="$DASHBOARD_TOKEN"} \
-  -e DASHBOARD_VIEW_TOKEN="$DASHBOARD_VIEW_TOKEN" \
-  intel-sys-rover bash -c 'source /opt/ros/humble/setup.bash && source /workspaces/intel_sys/install/setup.bash && exec python3 /workspaces/intel_sys/scripts/dashboard/dashboard.py' >/dev/null
+# The dashboard service (docker-compose.robot.yml) restarts on its own after a crash
+# or reboot, keeping the tokens and bind address it was started with.
+export DASHBOARD_HOST="$HOST_BIND" DASHBOARD_PORT="$PORT"
+scripts/robot.sh up -d --force-recreate dashboard >/dev/null
 
 sleep 6
 echo "dashboard bound to ${HOST_BIND}:${PORT}"

@@ -27,7 +27,27 @@ Goal: autonomous driving on one localization chain: **Point-LIO** (LiDAR-inertia
 | 7 | Navigation: Nav2 global costmap on RTAB-Map's `/map`, local costmap on `odom` with STVL; dashboard explorer and waypoints use the real pose and send goals to Nav2 | STM32 + LiDAR | Scripted waypoint run with recovery passes |
 | 8 | Camera: D435 running, camera↔LiDAR extrinsics calibrated, RGB-D enabled in RTAB-Map for visual loop closures | D435 | Visual loop closures detected; no regression against LiDAR-only |
 
-Phases 1 through 4 can proceed now. Phase 6 can be developed on recorded bags once Phase 5 runs. Later, optional: one `robot_localization` filter fusing Point-LIO + IMU + real wheel encoders as a fallback when the LiDAR degrades.
+Phases 1 through 4 can proceed now. The chain for Phases 5–7 already runs in the Gazebo sim; see [Simulation results](#simulation-results-branch-slam-chain-2026-11-21). Phase 6 can be developed on recorded bags once Phase 5 runs. Later, optional: one `robot_localization` filter fusing Point-LIO + IMU + real wheel encoders as a fallback when the LiDAR degrades.
+
+## Simulation results (branch `slam-chain`, 2026-11-21)
+
+The whole chain runs in Gazebo on the laptop (`intel-sys-sim`, amd64): `ros2 launch intel_sys_bringup sim.launch.py world:=loop.sdf x:=-6.5 y:=0.0` (SLAM is on by default in the sim bringup; off by default in `robot.launch.py`). `scripts/slam_loop_test.py` drives a lap through Nav2 and scores the pose against Gazebo ground truth.
+
+- **Phase 1 (sim image):** dependencies added to both Dockerfiles; `scripts/run_tests.sh` passes in `intel-sys-sim` (23 tests). The rover image has not been rebuilt.
+- **Mapping lap (Phase 6, first half): PASS.** About 40 m around `loop.sdf`. SLAM error stayed at 6–10 cm, grew to 48 cm by the last corner, and one proximity closure brought it to 7 cm at the end. Point-LIO alone drifted about 0.9 m.
+- **Localization mode (Phase 6, second half): starts correctly, lap not passing yet.** `slam_localization:=true database_path:=...` loads the saved map and starts localized (5 mm). In the south corridor Point-LIO drifts about 1.4 m and localization mode does not correct it until the next corner, so the robot overshoots into the east wall.
+- **Fixed along the way** (each would also have hit the robot):
+  - Point-LIO adapter applied the LiDAR mount tilt twice (`base_footprint` pitched 84°).
+  - Point-LIO `path_en` republished the full path every update; odometry fell 100 s behind within minutes, TF went stale and Nav2 stalled.
+  - No `velocity_smoother` section: Nav2's defaults clamp `vy` to 0, silently dropping mecanum strafing, so the robot drifted off its path.
+  - Static global costmap shrank to the explored map, so goals in unexplored space never planned; it is now a rolling window in `map`.
+  - Point-LIO's vertical drift lifted the floor into STVL as phantom obstacles; `odom→base_footprint` is now planar (x, y, yaw; REP-120), `planar: false` keeps 6-DoF.
+  - RTAB-Map localization mode assumed the robot restarted at the last mapped pose; `RGBD/StartAtOrigin` is set.
+
+Next in the sim:
+- [ ] Point-LIO drift in long corridors (~1 m over 13 m). Check whether it is the sim LiDAR (18 rings, about 3,800 points per scan; the real L2 is much denser) or the Point-LIO parameters; record a real L2 bag down a corridor to compare.
+- [ ] Localization mode: localize more often or accept larger corrections (`Rtabmap/DetectionRate`, `Icp/MaxCorrespondenceDistance`, `RGBD/LocalRadius`) so drift is pulled back mid-corridor, then pass the lap.
+- [ ] Without a camera there is no global relocalization: the robot must start at the map origin or be given `/rtabmap/initialpose`. Add a "set pose" control to the dashboard, or a fixed home spot.
 
 ## Decisions
 

@@ -48,16 +48,6 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
  && apt-get update \
  && apt-get install -y --no-install-recommends librealsense2-dev librealsense2-utils
 
-# Phase 1 (docs/ROADMAP.md): localization chain + test tooling. Separate layer so
-# the earlier apt layers stay cached.
-RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
-    --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
-    apt-get update && apt-get install -y --no-install-recommends \
-    ros-humble-rtabmap-ros \
-    ros-humble-robot-localization ros-humble-imu-filter-madgwick \
-    ros-humble-rosbag2-storage-mcap ros-humble-tf2-tools \
-    python3-pytest ros-humble-launch-testing-ament-cmake
-
 FROM base AS third-party-builder
 ENV CCACHE_DIR=/root/.cache/ccache \
     CCACHE_MAXSIZE=2G
@@ -86,6 +76,16 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
                    -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
 
 FROM base AS development
+# Phase 1 (docs/ROADMAP.md): localization chain + test tooling. Runtime-only, so it
+# goes in the final stage: the third-party build above stays cached.
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
+    apt-get update && apt-get install -y --no-install-recommends \
+    ros-humble-rtabmap-ros \
+    ros-humble-robot-localization ros-humble-imu-filter-madgwick \
+    ros-humble-rosbag2-storage-mcap ros-humble-tf2-tools \
+    python3-pytest ros-humble-launch-testing-ament-cmake
+
 COPY --from=third-party-builder /opt/intel_sys/third_party /opt/intel_sys/third_party
 COPY docker/entrypoint.sh /ros_entrypoint_intel_sys.sh
 RUN chmod +x /ros_entrypoint_intel_sys.sh \

@@ -38,13 +38,18 @@ from urllib.parse import parse_qs, urlparse
 import numpy as np
 import rclpy
 import tf2_ros
+
+try:  # JPEG preview of the RealSense colour stream; the dashboard still runs without it
+    import cv2
+except ImportError:  # pragma: no cover
+    cv2 = None
 from geometry_msgs.msg import Twist
 from intel_sys_interfaces.msg import MotorsState
 from nav_msgs.msg import Odometry
 from rcl_interfaces.msg import Log
 from rclpy.node import Node
 from rclpy.qos import qos_profile_sensor_data
-from sensor_msgs.msg import Image, Imu, PointCloud2
+from sensor_msgs.msg import CameraInfo, Image, Imu, PointCloud2
 from sensor_msgs_py import point_cloud2
 from std_msgs.msg import UInt16
 
@@ -53,6 +58,10 @@ from explorer import Config as ExplorerConfig  # noqa: E402
 from explorer import Explorer  # noqa: E402
 from waypoint import NavConfig, OccupancyMap, WaypointNav  # noqa: E402
 from frames import WindowedCloud, align_rotation, tilt_deg  # noqa: E402
+from servo import ServoConfig  # noqa: E402
+from servo import decide as servo_decide  # noqa: E402
+from tag import TAG_DICT_NAMES, TAG_ID, TAG_SIZE_IN, TagFinder, overlay as overlay_tag, scan_markers  # noqa: E402
+MARKER_SCAN_S = 2.0   # s between diagnostic scans for other markers, while the target is absent
 
 MAX_LIN = 0.10      # m/s, hard cap for manual vx and vy
 MAX_ANG = 0.50      # rad/s, hard cap for manual wz
@@ -73,6 +82,12 @@ MIN_POINTS = 3          # use the 3rd-closest return, not a single stray point
 # /cmd_vel drives away from what it sees. Autonomy decides in the LiDAR's frame, so its
 # command is rotated 180 deg before publishing. Manual drive is not affected.
 LIDAR_FACES_REAR = os.environ.get('DASHBOARD_LIDAR_FACES_REAR', '1') == '1'
+# Servo command mapping, set separately for forward and yaw (1 = negate, 0 = as computed).
+# Forward: 1 on 2026-11-23. A live run with forward unflipped drove AWAY from the tag, so the
+# camera's +z points at the rover's rear. Yaw: 0, pending a tethered turn test. The earlier
+# run with both flipped turned the wrong way, so yaw is not confirmed either way.
+SERVO_FLIP_FORWARD = os.environ.get('DASHBOARD_SERVO_FLIP_FORWARD', '1') == '1'
+SERVO_FLIP_YAW = os.environ.get('DASHBOARD_SERVO_FLIP_YAW', '0') == '1'
 LIDAR_TOPIC = '/lidar/points_raw'
 MAX_WAYPOINTS = 50
 MAX_COORD = 100.0  # m from the odometry origin
@@ -81,16 +96,26 @@ CLOUD_RANGE = 20.0     # m, returns farther than this are not drawn
 CLOUD_WINDOW_S = 60.0  # s: accumulated 3D points and 2D map cells expire after this
 CLOUD_ADD = 1500       # points per scan kept for accumulation
 CLOUD_BUFFER_POINTS = 1000000  # rolling buffer cap (about 13 MB), oldest scans dropped first
+CLOUD_TRANSFORM_MAX = 200000   # buffer points thinned before the frame transform (keeps a full buffer cheap)
+PAYLOAD_TTL_S = 0.5    # cloud, map and camera payloads are rebuilt at most this often, shared by all clients
+STALE_S = 2.0          # a sensor with no message for this long is shown as stale
 LIDAR_IMU_TOPIC = '/lidar/imu'
 IMU_ALPHA = 0.002      # gravity low-pass per LiDAR IMU sample (about 2 s at 250 Hz)
 IMU_G_MIN, IMU_G_MAX = 8.0, 11.5   # only samples near 1 g update gravity (rejects motion)
+CAMERA_PREVIEW_W = 320  # px, width of the colour preview sent to the page
+CAMERA_JPEG_Q = 70
+DEPTH_PATCH_PX = 40     # side of the square patch at the image centre used for centre depth
+CAMERA_INFO_TOPIC = '/camera/camera_info'   # colour intrinsics (remapped in camera.launch.py)
+SERVO_TARGET_RANGE = (0.4, 3.0)             # m, the hold distance the page may set (18 in default; min stop is 0.35 m)
+TAG_MAX_AGE_S = 0.5    # a tag seen longer ago than this is not drawn on the preview
 
 TOPICS = {
     'imu': '/imu_raw',
     'odom': '/odom/wheel',
     'set_motor': '/set_motor',
     'lidar': LIDAR_TOPIC,
-    'camera': '/camera/image_raw',
+    'camera': '/camera/image_raw',      # RealSense D435i colour (remapped in camera.launch.py)
+    'depth': '/camera/depth/image_raw',  # RealSense aligned depth, 16UC1 mm
 }
 
 
@@ -107,6 +132,11 @@ def clamp(v, lim):
 def autonomy_to_cmd_vel(vx, vy, wz, faces_rear=LIDAR_FACES_REAR):
     """Map an explorer command (LiDAR frame) to /cmd_vel. A 180 deg yaw flips vx, vy; wz is unchanged."""
     return (-vx, -vy, wz) if faces_rear else (vx, vy, wz)
+
+
+def servo_to_cmd_vel(vx, wz, flip_forward=SERVO_FLIP_FORWARD, flip_yaw=SERVO_FLIP_YAW):
+    """Servo command to /cmd_vel, with forward and yaw each optionally negated (see the settings above)."""
+    return (-vx if flip_forward else vx), (-wz if flip_yaw else wz)
 
 
 def lidar_pose(odom, faces_rear=LIDAR_FACES_REAR):
@@ -161,6 +191,25 @@ class State:
         self.cloud_acc = WindowedCloud(CLOUD_WINDOW_S, max_points=CLOUD_BUFFER_POINTS)  # odometry frame
         self.imu_up = None      # gravity-up unit vector in lidar_imu_link (low-passed)
         self.tilt_deg = None    # angle of gravity from base_footprint z, None if unknown
+        # RealSense: latest colour message (encoded on demand), and centre depth in metres
+        self.color_msg = None
+        self.depth_center_m = None
+        self.cam_K = None           # 3x3 colour intrinsics from camera_info
+        self.cam_D = None
+        self.lidar_tf_ok = False    # base_footprint <- lidar frame lookup succeeded on the last scan
+        # ArUco tag (visual servo)
+        self.tag = None             # last detection (pose in the camera optical frame)
+        self.tag_t = None           # monotonic time of that detection
+        self.servo_mode = 'off'     # off | dry | live
+        self.servo_state = 'IDLE'
+        self.servo_cmd = (0.0, 0.0)  # (vx, wz) of the last decision
+        self.servo_target = 0.4572   # m: 18 in
+        self.tag_dict = None         # 7x7 dictionary that matched the tag, once locked
+        self.markers = []            # every ArUco marker in the last diagnostic scan (any ID)
+        self.markers_t = None
+        # cached payloads: key -> (monotonic time built, value); guarded by payload_lock
+        self.payload_lock = threading.Lock()
+        self.payload_cache = {}
 
     def mark(self, key):
         with self.lock:
@@ -170,6 +219,11 @@ class State:
         with self.lock:
             n = sum(1 for t in self.stamps[key] if now - t <= RATE_WINDOW_S)
         return round(n / RATE_WINDOW_S, 1)
+
+    def last_age(self, key, now):
+        """Seconds since the last message on this stream, or None if none has arrived."""
+        with self.lock:
+            return round(now - self.stamps[key][-1], 2) if self.stamps[key] else None
 
     def manual_command(self, now):
         """Manual pad output for this tick, or None when nothing should be sent."""
@@ -202,7 +256,10 @@ class DashboardNode(Node):
         self.create_subscription(MotorsState, TOPICS['set_motor'], lambda m: self._safe(lambda: self.s.mark('set_motor')), 10)
         self.create_subscription(PointCloud2, LIDAR_TOPIC, lambda m: self._safe(lambda: self._lidar(m)), qos_profile_sensor_data)
         self.create_subscription(Imu, LIDAR_IMU_TOPIC, lambda m: self._safe(lambda: self._lidar_imu(m)), qos_profile_sensor_data)
-        self.create_subscription(Image, TOPICS['camera'], lambda m: self._safe(lambda: self.s.mark('camera')), qos_profile_sensor_data)
+        self.create_subscription(Image, TOPICS['camera'], lambda m: self._safe(lambda: self._color(m)), qos_profile_sensor_data)
+        self.create_subscription(Image, TOPICS['depth'], lambda m: self._safe(lambda: self._depth(m)), qos_profile_sensor_data)
+        self.create_subscription(CameraInfo, CAMERA_INFO_TOPIC, lambda m: self._safe(lambda: self._camera_info(m)), 10)
+        self.servo_cfg = ServoConfig()
         self.create_subscription(UInt16, '/battery', lambda m: self._safe(lambda: self._battery(m)), 10)
         self.create_subscription(Log, '/rosout', lambda m: self._safe(lambda: self._log(m)), 100)
         self.create_timer(1.0 / TICK_HZ, lambda: self._safe(self._tick))
@@ -244,6 +301,25 @@ class DashboardNode(Node):
                 b = (1.0 - IMU_ALPHA) * self.s.imu_up + IMU_ALPHA * u
                 self.s.imu_up = b / np.linalg.norm(b)
 
+    def _camera_info(self, msg):
+        with self.s.lock:
+            if self.s.cam_K is None:
+                self.get_logger().info(f'camera intrinsics: fx {msg.k[0]:.1f} fy {msg.k[4]:.1f} '
+                                       f'cx {msg.k[2]:.1f} cy {msg.k[5]:.1f}')
+            self.s.cam_K = np.array(msg.k, dtype=np.float64).reshape(3, 3)
+            self.s.cam_D = np.array(msg.d, dtype=np.float64) if len(msg.d) else None
+
+    def _color(self, msg):
+        self.s.mark('camera')
+        with self.s.lock:
+            self.s.color_msg = msg      # encoded for the page on demand; tag_worker detects on it
+
+    def _depth(self, msg):
+        self.s.mark('depth')
+        d = center_depth_m(msg)
+        with self.s.lock:
+            self.s.depth_center_m = d
+
     def _battery(self, msg):
         with self.s.lock:
             self.s.battery_mv = int(msg.data)
@@ -263,8 +339,12 @@ class DashboardNode(Node):
             tf = self.tf_buffer.lookup_transform('base_footprint', msg.header.frame_id,
                                                  rclpy.time.Time(), rclpy.duration.Duration(seconds=0.1))
         except Exception as e:  # noqa: BLE001
+            with self.s.lock:
+                self.s.lidar_tf_ok = False
             self._warn_once(f'no transform base_footprint<-{msg.header.frame_id}: {e}')
             return
+        with self.s.lock:
+            self.s.lidar_tf_ok = True
         pts = point_cloud2.read_points(msg, field_names=('x', 'y', 'z'), skip_nans=True)
         xyz = np.column_stack([pts['x'], pts['y'], pts['z']]).astype(np.float64)
         if xyz.size == 0:
@@ -344,7 +424,27 @@ class DashboardNode(Node):
                 self.s.moving = False
                 self.s.ap_state = 'ESTOP'
                 self.s.ap_cmd = (0.0, 0.0, 0.0)
+                self.s.servo_state = 'ESTOP'
+                self.s.servo_cmd = (0.0, 0.0)
             self._publish(0.0, 0.0)
+            return
+
+        with self.s.lock:
+            servo_mode = self.s.servo_mode
+        if servo_mode in ('live', 'dry'):
+            with self.s.lock:
+                det, det_t, target = self.s.tag, self.s.tag_t, self.s.servo_target
+            age = None if det_t is None else now - det_t
+            cfg = ServoConfig(**{**vars(self.servo_cfg), 'target_m': target})
+            state, vx, wz = servo_decide(cfg, det, age)
+            with self.s.lock:
+                self.s.servo_state = state
+                self.s.servo_cmd = (vx, wz)
+            if servo_mode == 'live':
+                cvx, cwz = servo_to_cmd_vel(vx, wz)
+                self._publish(cvx, cwz, 0.0)
+                with self.s.lock:
+                    self.s.moving = (vx != 0.0 or wz != 0.0)
             return
 
         if mode in ('live', 'dry'):
@@ -412,6 +512,60 @@ class DashboardNode(Node):
             self.s.ap_state = 'IDLE'
             self.s.ap_cmd = (0.0, 0.0, 0.0)
         self.explorer.reset()
+
+    def set_servo(self, mode, target_m=None):
+        """Arm or disarm the tag servo. Leaving live sends a few zeros on the way out."""
+        with self.s.lock:
+            was_live = self.s.servo_mode == 'live'
+            self.s.servo_mode = mode
+            self.s.servo_state = 'IDLE'
+            self.s.servo_cmd = (0.0, 0.0)
+            if target_m is not None:
+                self.s.servo_target = target_m
+            if was_live:
+                self.s.moving = True
+
+
+def tag_worker(state, stop):
+    """Detect the servo tag on the newest colour frame, off the ROS callback thread.
+
+    Frames that arrive while a search runs are skipped, so the detector always works on the latest
+    image and its lag stays at one search time.
+    """
+    finder = TagFinder()
+    last = None
+    last_scan = 0.0
+    while not stop.is_set():
+        with state.lock:
+            msg, K, D = state.color_msg, state.cam_K, state.cam_D
+        if msg is None or msg is last or K is None or cv2 is None:
+            time.sleep(0.01)
+            continue
+        last = msg
+        img = image_to_bgr(msg)
+        if img is None:
+            continue
+        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+        try:
+            det = finder.find(gray, K, D)
+            markers = None
+            if det is None and time.monotonic() - last_scan >= MARKER_SCAN_S:
+                last_scan = time.monotonic()
+                markers = scan_markers(gray)
+        except Exception as e:  # noqa: BLE001
+            with state.lock:  # surface the failure on the page instead of killing the thread silently
+                state.warnings.append({'t': round(time.time(), 1), 'level': 'ERROR', 'node': 'tag',
+                                       'msg': f'tag detection error: {e!r}'[:200]})
+            time.sleep(0.5)
+            continue
+        with state.lock:
+            state.tag_dict = finder.dict_name
+            if det is not None:
+                state.tag = det
+                state.tag_t = time.monotonic()
+            if markers is not None:
+                state.markers = markers
+                state.markers_t = time.monotonic()
 
 
 def _to_frame(xyz, tf):
@@ -484,6 +638,13 @@ def make_handler(state, token, node, view_token=''):
                 if not self._authed(parse_qs(url.query)):
                     return self._send(401, {'error': 'bad token'})
                 return self._send(200, map_payload(state, node))
+            if url.path == '/api/camera.jpg':
+                if not self._authed(parse_qs(url.query)):
+                    return self._send(401, {'error': 'bad token'})
+                jpg = camera_jpeg(state)
+                if jpg is None:
+                    return self._send(404, {'error': 'no colour frame yet'})
+                return self._send(200, jpg, 'image/jpeg')
             self._send(404, {'error': 'not found'})
 
         def do_POST(self):
@@ -521,6 +682,9 @@ def make_handler(state, token, node, view_token=''):
                     if state.nav_mode != 'off':
                         state.rejections += 1
                         return self._send(409, {'error': f'waypoint path is {state.nav_mode}; stop it first'})
+                    if state.servo_mode != 'off':
+                        state.rejections += 1
+                        return self._send(409, {'error': f'tag servo is {state.servo_mode}; set it off first'})
                     state.drive = (vx, vy, wz)
                     state.drive_t = time.monotonic()
                 return self._send(200, {'ok': True})
@@ -542,8 +706,11 @@ def make_handler(state, token, node, view_token=''):
                     return self._send(503, {'error': f'ROS executor down: {spin_error}'})
                 with state.lock:
                     nav_mode = state.nav_mode
+                    servo_mode = state.servo_mode
                 if nav_mode != 'off' and mode != 'off':
                     return self._send(409, {'error': f'waypoint path is {nav_mode}; stop it first'})
+                if servo_mode != 'off' and mode != 'off':
+                    return self._send(409, {'error': f'tag servo is {servo_mode}; set it off first'})
                 if mode == 'live':
                     if body.get('confirm') != 'TETHERED':
                         return self._send(400, {'error': 'live needs {"mode":"live","confirm":"TETHERED"}'})
@@ -564,9 +731,12 @@ def make_handler(state, token, node, view_token=''):
                     lidar_age = None if state.lidar_t is None else time.monotonic() - state.lidar_t
                     have_odom = state.odom is not None
                     n_goals = len(node.nav.points)
+                    servo_mode = state.servo_mode
                 if spin_error:
                     return self._send(503, {'error': f'ROS executor down: {spin_error}'})
                 if mode != 'off':
+                    if servo_mode != 'off':
+                        return self._send(409, {'error': f'tag servo is {servo_mode}; set it off first'})
                     if ap_mode != 'off':
                         return self._send(409, {'error': f'autonomy is {ap_mode}; set it off first'})
                     if estop:
@@ -599,12 +769,50 @@ def make_handler(state, token, node, view_token=''):
                     clean.append((x, y))
                 if not node.set_waypoints(clean):
                     return self._send(409, {'error': 'stop live navigation before editing waypoints'})
+                invalidate(state, 'map')
                 return self._send(200, {'ok': True, 'points': [[x, y] for x, y in clean]})
 
             if url.path == '/api/map/clear':
                 with state.lock:
                     state.map.clear()
+                invalidate(state, 'map')
                 return self._send(200, {'ok': True})
+
+            if url.path == '/api/servo':
+                mode = str(body.get('mode', 'off'))
+                if mode not in ('off', 'dry', 'live'):
+                    return self._send(400, {'error': 'mode must be off, dry or live'})
+                try:
+                    target = float(body.get('target_m', 0.4572))
+                except (TypeError, ValueError):
+                    return self._send(400, {'error': 'target_m must be a number'})
+                lo, hi = SERVO_TARGET_RANGE
+                if not math.isfinite(target) or not lo <= target <= hi:
+                    return self._send(400, {'error': f'target_m must be within {lo} and {hi} m'})
+                with state.lock:
+                    estop, spin_error = state.estop, state.spin_error
+                    ap_mode, nav_mode = state.ap_mode, state.nav_mode
+                    have_k = state.cam_K is not None
+                    tag_age = None if state.tag_t is None else time.monotonic() - state.tag_t
+                if spin_error:
+                    return self._send(503, {'error': f'ROS executor down: {spin_error}'})
+                if mode != 'off':
+                    if estop:
+                        return self._send(409, {'error': 'e-stop engaged; reset first'})
+                    if ap_mode != 'off':
+                        return self._send(409, {'error': f'autonomy is {ap_mode}; set it off first'})
+                    if nav_mode != 'off':
+                        return self._send(409, {'error': f'waypoint path is {nav_mode}; stop it first'})
+                    if not have_k:
+                        return self._send(409, {'error': 'no camera_info yet: is the RealSense running?'})
+                if mode == 'live':
+                    if body.get('confirm') != 'TETHERED':
+                        return self._send(400, {'error': 'live needs {"mode":"live","confirm":"TETHERED"}'})
+                    # The tag does not have to be in view to arm: until a fresh detection arrives the
+                    # servo is LOST and sends zero, so the robot waits for the tag.
+                node.set_servo(mode, target)
+                print(f'[dashboard] tag servo -> {mode}, hold {target} m', flush=True)
+                return self._send(200, {'ok': True, 'mode': mode, 'target_m': target})
 
             if url.path == '/api/estop':
                 with state.lock:
@@ -612,6 +820,7 @@ def make_handler(state, token, node, view_token=''):
                     state.drive = (0.0, 0.0, 0.0)
                     state.ap_mode = 'off'
                     state.nav_mode = 'off'
+                    state.servo_mode = 'off'
                 print('[dashboard] E-STOP engaged', flush=True)
                 return self._send(200, {'ok': True, 'estop': True})
 
@@ -620,7 +829,8 @@ def make_handler(state, token, node, view_token=''):
                     state.estop = False
                 node.set_autonomy('off')
                 node.set_nav('off')
-                print('[dashboard] e-stop reset, autonomy and waypoint path off', flush=True)
+                node.set_servo('off')
+                print('[dashboard] e-stop reset, autonomy, waypoint path and tag servo off', flush=True)
                 return self._send(200, {'ok': True, 'estop': False})
 
             self._send(404, {'error': 'not found'})
@@ -664,7 +874,38 @@ def status_payload(state):
             'warnings': list(state.warnings)[-20:],
         }
     payload['rates_hz'] = {k: state.rate(k, now) for k in TOPICS}
+    # live monitoring: per stream, the rate over the last RATE_WINDOW_S and the age of the newest message
+    payload['sensors'] = {k: {'hz': payload['rates_hz'][k], 'age_s': state.last_age(k, now),
+                              'stale': _stale(state.last_age(k, now))} for k in TOPICS}
+    with state.lock:
+        depth_m = state.depth_center_m
+        K_ok = state.cam_K is not None
+        tf_ok = state.lidar_tf_ok
+        det, det_t = state.tag, state.tag_t
+        servo = (state.servo_mode, state.servo_state, state.servo_cmd, state.servo_target)
+    payload['camera'] = {'model': 'RealSense D435i', 'depth_center_m': depth_m,
+                         'preview_w': CAMERA_PREVIEW_W, 'intrinsics': K_ok}
+    payload['tf_lidar'] = tf_ok
+    tag_age = None if det_t is None else round(now - det_t, 2)
+    payload['tag'] = None if det is None else {
+        'id': det['id'], 'dict': det['dict'], 'z_m': det['z_m'], 'x_m': det['x_m'],
+        'distance_m': det['distance_m'], 'bearing_deg': round(math.degrees(det['bearing_rad']), 1),
+        'age_s': tag_age, 'size_in': TAG_SIZE_IN}
+    with state.lock:
+        markers = list(state.markers)
+    payload['markers'] = [m for m in markers if not (m['id'] == TAG_ID and m['dict'] in TAG_DICT_NAMES)]
+    payload['markers'] = [{'dict': m['dict'], 'id': m['id']} for m in payload['markers']]
+    mode, sstate, (svx, swz), target = servo
+    payload['servo'] = {'mode': mode, 'state': sstate, 'vx': svx, 'wz': swz, 'target_m': target,
+                        'stale_s': ServoConfig().stale_s,
+                        'mount': f'forward {"flipped" if SERVO_FLIP_FORWARD else "as computed"}, '
+                                 f'yaw {"flipped" if SERVO_FLIP_YAW else "as computed"}'}
     return payload
+
+
+def _stale(age_s):
+    """True when a stream has never sent a message or its last one is older than STALE_S."""
+    return age_s is None or age_s > STALE_S
 
 
 def base_to_odom(pts, pose):
@@ -691,20 +932,121 @@ def odom_to_base(pts, pose):
     return out
 
 
+def _cached(state, key, build, ttl=PAYLOAD_TTL_S):
+    """Return the payload under key, rebuilding it at most every ttl seconds.
+
+    Every page polls these endpoints, so with several clients the same heavy build would
+    otherwise run once per request. Build runs outside the locks; a rare double build is harmless.
+    """
+    now = time.monotonic()
+    with state.payload_lock:
+        hit = state.payload_cache.get(key)
+        if hit is not None and now - hit[0] < ttl:
+            return hit[1]
+    value = build()
+    with state.payload_lock:
+        state.payload_cache[key] = (time.monotonic(), value)
+    return value
+
+
+def invalidate(state, key):
+    """Drop a cached payload so the next request rebuilds it (used after a clear or edit)."""
+    with state.payload_lock:
+        state.payload_cache.pop(key, None)
+
+
+def center_depth_m(msg):
+    """Median depth in metres of the square patch at the image centre, or None.
+
+    Works on a 16UC1 (millimetre) image, the RealSense aligned-depth encoding. Zero means
+    no return, so those pixels are ignored; fewer than 20 valid pixels gives None.
+    """
+    if msg.encoding != '16UC1' or msg.height == 0 or msg.width == 0:
+        return None
+    h, w = int(msg.height), int(msg.width)
+    rows = np.frombuffer(msg.data, dtype=np.uint16).reshape(h, int(msg.step) // 2)[:, :w]
+    return depth_patch_m(rows)
+
+
+def depth_patch_m(depth_mm):
+    """Median of the non-zero millimetre pixels in the centre patch of a 2-D depth array, in metres."""
+    h, w = depth_mm.shape
+    half = DEPTH_PATCH_PX // 2
+    r0, c0 = max(0, h // 2 - half), max(0, w // 2 - half)
+    patch = depth_mm[r0:h // 2 + half, c0:w // 2 + half]
+    valid = patch[patch > 0]
+    if valid.size < 20:
+        return None
+    return round(float(np.median(valid)) / 1000.0, 3)
+
+
+def image_to_bgr(msg):
+    """Colour Image message as an (H, W, 3) BGR array for OpenCV, or None for other encodings."""
+    if msg.encoding not in ('rgb8', 'bgr8') or msg.height == 0 or msg.width == 0:
+        return None
+    rows = np.frombuffer(msg.data, dtype=np.uint8).reshape(int(msg.height), int(msg.step))
+    img = rows[:, :int(msg.width) * 3].reshape(int(msg.height), int(msg.width), 3)
+    if msg.encoding == 'rgb8':
+        img = img[..., ::-1]
+    return np.ascontiguousarray(img)
+
+
+def camera_jpeg(state):
+    """JPEG preview of the latest colour frame (CAMERA_PREVIEW_W wide), or None."""
+    return _cached(state, 'camera', lambda: _build_camera_jpeg(state))
+
+
+def _build_camera_jpeg(state):
+    if cv2 is None:
+        return None
+    with state.lock:
+        msg = state.color_msg
+    if msg is None:
+        return None
+    img = image_to_bgr(msg)
+    if img is None:
+        return None
+    img = img.copy()                # writable, so the tag overlay can be drawn
+    with state.lock:
+        det, det_t = state.tag, state.tag_t
+    if det is not None and det_t is not None and time.monotonic() - det_t <= TAG_MAX_AGE_S:
+        overlay_tag(img, det)
+    else:
+        with state.lock:
+            others = list(state.markers)
+        for m in others:  # not the target: drawn orange with its family and ID
+            pts = np.array(m['corners'], dtype=np.int32)
+            cv2.polylines(img, [pts], True, (0, 165, 255), 2)
+            cv2.putText(img, f"{m['dict'][4:7].lower()} id {m['id']} (not target)", (int(pts[:, 0].min()),
+                        max(14, int(pts[:, 1].min()) - 6)), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (0, 165, 255), 1, cv2.LINE_AA)
+    h, w = img.shape[:2]
+    small = cv2.resize(img, (CAMERA_PREVIEW_W, max(1, round(h * CAMERA_PREVIEW_W / w))),
+                       interpolation=cv2.INTER_AREA)
+    ok, buf = cv2.imencode('.jpg', small, [cv2.IMWRITE_JPEG_QUALITY, CAMERA_JPEG_Q])
+    return buf.tobytes() if ok else None
+
+
 def cloud_payload(state):
     """Recent cloud (CLOUD_WINDOW_S) in the current robot frame, thinned for the page."""
+    return _cached(state, 'cloud', lambda: _build_cloud(state))
+
+
+def _build_cloud(state):
     now = time.monotonic()
     with state.lock:
         odom = state.odom
         t = state.cloud_t
-        acc = state.cloud_acc.stack(now)
+        # Only references are taken under the lock; the concatenation and transform run outside it,
+        # so a full buffer no longer stalls the ROS callbacks.
+        parts = state.cloud_acc.parts(now)
         buffer_points = len(state.cloud_acc)
         raw = state.cloud
         tilt = state.tilt_deg
     pose = lidar_pose(odom)
-    accumulated = pose is not None and acc.shape[0] > 0
+    accumulated = pose is not None and len(parts) > 0
     arr = raw
     if accumulated:
+        acc = decimate(np.concatenate(parts, axis=0), CLOUD_TRANSFORM_MAX)  # thin before transforming
         arr = odom_to_base(acc, pose)
         arr = arr[np.linalg.norm(arr, axis=1) < CLOUD_RANGE]
     arr = decimate(arr, CLOUD_MAX)
@@ -723,6 +1065,10 @@ def cloud_payload(state):
 
 
 def map_payload(state, node):
+    return _cached(state, 'map', lambda: _build_map(state, node))
+
+
+def _build_map(state, node):
     with state.lock:
         snap = state.map.snapshot()
         odom = state.odom
@@ -755,6 +1101,8 @@ def main():
                 state.ap_mode = 'off'
             print(f'[dashboard] ROS executor died: {e!r}', flush=True)
     threading.Thread(target=_spin, daemon=True).start()
+    tag_stop = threading.Event()
+    threading.Thread(target=tag_worker, args=(state, tag_stop), daemon=True).start()
 
     def _on_term(signum, frame):
         raise KeyboardInterrupt
@@ -774,6 +1122,7 @@ def main():
             state.estop = True
             state.ap_mode = 'off'
         time.sleep(0.3)
+        tag_stop.set()
         httpd.server_close()
         try:
             node.destroy_node()
@@ -791,7 +1140,10 @@ PAGE = """<!doctype html>
   :root{color-scheme:light dark;--bg:#f6f7f9;--fg:#1b1f24;--card:#fff;--line:#d8dde3;--ok:#1a7f37;--warn:#9a6700;--bad:#cf222e}
   @media (prefers-color-scheme:dark){:root{--bg:#0d1117;--fg:#e6edf3;--card:#161b22;--line:#30363d}}
   body{margin:0;background:var(--bg);color:var(--fg);font:14px system-ui,sans-serif}
-  main{padding:16px;max-width:1200px;margin:auto;display:grid;gap:12px}
+  main{padding:16px;max-width:1500px;margin:auto;display:grid;gap:12px;align-items:start;grid-template-columns:repeat(2,minmax(0,1fr))}
+  main>*{min-width:0}
+  main>.wide{grid-column:1/-1}
+  @media (max-width:900px){main{grid-template-columns:minmax(0,1fr)}}
   .card{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:12px}
   h2{font-size:13px;text-transform:uppercase;letter-spacing:.05em;margin:0 0 8px;opacity:.7}
   .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:8px}
@@ -804,6 +1156,9 @@ PAGE = """<!doctype html>
   .ok{color:var(--ok)} .warn{color:var(--warn)} .bad{color:var(--bad)}
   .ap{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
   .ap button.on{outline:2px solid var(--ok)}
+  .cam img{width:100%;max-width:320px;height:auto;border-radius:6px;border:1px solid var(--line);display:block}
+  img[hidden]{display:none}
+  #cloud3d canvas{display:block;width:100%;height:100%}
 </style></head>
 <body><main>
   <div class="card" id="auth"><h2>Access</h2>
@@ -830,7 +1185,7 @@ PAGE = """<!doctype html>
     <p style="opacity:.7;margin:8px 0 0">Live drives the wheels at up to 0.10 m/s. Keep the tether taut and your hand near the e-stop. Manual drive is disabled while autonomy is armed.</p>
   </div>
 
-  <div class="card"><h2>3D LiDAR (Unitree L2, robot frame, gravity aligned, Y up)</h2>
+  <div class="card wide"><h2>3D LiDAR (Unitree L2, robot frame, gravity aligned, Y up)</h2>
     <div id="cloud3d" style="width:100%;height:clamp(260px,52vh,560px);border:1px solid var(--line);border-radius:6px;overflow:hidden"></div>
     <p style="margin:8px 0 0;opacity:.7" id="cloudInfo">waiting for LiDAR</p>
     <div class="ap" style="margin-top:8px">
@@ -839,7 +1194,25 @@ PAGE = """<!doctype html>
     <p style="opacity:.7;margin:6px 0 0">Drag to orbit, scroll to zoom. Colour is height: blue low, red high. Points are thinned to 4000 and returns beyond 20 m are dropped.</p>
   </div>
 
-  <div class="card"><h2>Map and waypoints (odometry frame)</h2>
+  <div class="card"><h2>RealSense D435i (colour and aligned depth)</h2>
+    <div class="cam"><img id="camImg" alt="" hidden></div>
+    <p style="margin:8px 0 0;opacity:.7" id="camInfo">no token yet: open the control or view link from scripts/dashboard_url.sh</p>
+    <p style="opacity:.7;margin:6px 0 0">Colour preview refreshes about every half second. Centre depth is the median of a 40 px patch in the middle of the aligned depth image. Outlined in green: ArUco tag when seen.</p>
+  </div>
+
+  <div class="card"><h2>Visual servo: ArUco ID 10 (5x5, size as set in tag.py), hold distance</h2>
+    <div class="ap">
+      <button id="svOff" onclick="setServo('off')">Off</button>
+      <button id="svDry" onclick="setServo('dry')">Dry run (no motion)</button>
+      <button id="svLive" onclick="setServo('live')">Live (tethered)</button>
+      <label style="display:flex;gap:6px;align-items:center">hold m
+        <input id="svTarget" type="number" value="0.46" min="0.4" max="3" step="0.01" style="width:84px;padding:8px"></label>
+    </div>
+    <p id="svState" style="margin:8px 0 0"></p>
+    <p style="opacity:.7;margin:8px 0 0">Drives forward or back to hold the tag at the set distance and turns to face it. Speeds are capped at 0.08 m/s and 0.3 rad/s. It stops when the tag is lost for 0.4 s, when it is closer than 0.35 m, and when it is beyond 4 m. It does not reverse, because the LiDAR cannot see behind the robot. Start with dry run and watch the numbers.</p>
+  </div>
+
+  <div class="card wide"><h2>Map and waypoints (odometry frame)</h2>
     <canvas id="map" style="display:block;width:100%;aspect-ratio:1/1;max-height:clamp(260px,46vh,520px);border:1px solid var(--line);border-radius:6px;touch-action:none;cursor:crosshair"></canvas>
     <p style="margin:8px 0 0;opacity:.7" id="mapInfo"></p>
     <p style="opacity:.7;margin:6px 0 8px">Tap the map to add a waypoint. Dark squares are LiDAR returns, the blue line is wheel odometry, and the arrow is the robot's LiDAR-forward heading. Odometry drifts, so this is a local picture for short runs, not a survey.</p>
@@ -869,20 +1242,32 @@ PAGE = """<!doctype html>
   <div class="card" id="statusCard"><h2>Status</h2>
     <p id="roleTag" style="margin:0 0 8px;opacity:.7"></p>
     <div class="grid" id="kv"></div>
-    <button onclick="forgetTok()" style="margin-top:8px">Forget token on this device</button>
-    <p style="margin:8px 0 0;opacity:.7" id="rates"></p>
+    <h2 style="margin-top:12px">Sensors (live)</h2>
+    <div class="grid" id="sensors"></div>
+    <button onclick="forgetTok()" style="margin-top:12px">Forget token on this device</button>
   </div>
 
-  <div class="card"><h2>Recent warnings</h2><div class="log" id="log"></div></div>
+  <div class="card wide"><h2>Recent warnings</h2><div class="log" id="log"></div></div>
 </main>
 <script>
 const q = new URLSearchParams(location.search);
-let TOKEN = q.get('token') || sessionStorage.getItem('robotTok') || '';
-if (q.get('token')) history.replaceState(null, '', location.pathname);  // keep the token out of the address bar
-if (TOKEN) { sessionStorage.setItem('robotTok', TOKEN); document.getElementById('auth').hidden = true; }
-function forgetTok(){ sessionStorage.removeItem('robotTok'); TOKEN = ''; location.reload(); }
-function authFail(msg){ document.getElementById('auth').hidden = false; document.getElementById('authMsg').textContent = msg; }
-function saveTok(){ TOKEN = document.getElementById('tok').value.trim(); sessionStorage.setItem('robotTok', TOKEN); document.getElementById('auth').hidden = true; }
+// The token is remembered in this browser (localStorage), so opening the link once is enough.
+// A ?token= in the link always wins, which also fixes a browser that has an old one stored.
+const store = {
+  get(k){ try { return localStorage.getItem(k) || ''; } catch(e){ return ''; } },
+  set(k, v){ try { localStorage.setItem(k, v); } catch(e){} },
+  del(k){ try { localStorage.removeItem(k); } catch(e){} },
+};
+let TOKEN = q.get('token') || store.get('robotTok') || '';
+if (q.get('token')) { store.set('robotTok', q.get('token')); history.replaceState(null, '', location.pathname); }  // keep it out of the address bar
+if (TOKEN) document.getElementById('auth').hidden = true;
+function forgetTok(){ store.del('robotTok'); TOKEN = ''; location.reload(); }
+function authFail(msg){
+  // a rejected token is dropped so the browser stops sending it; the Access box asks for a new one
+  store.del('robotTok'); TOKEN = '';
+  document.getElementById('auth').hidden = false; document.getElementById('authMsg').textContent = msg;
+}
+function saveTok(){ TOKEN = document.getElementById('tok').value.trim(); store.set('robotTok', TOKEN); document.getElementById('auth').hidden = true; }
 const H = () => ({'Content-Type':'application/json','X-Token':TOKEN});
 async function post(path, body){
   try { const r = await fetch(path,{method:'POST',headers:H(),body:JSON.stringify(body||{})}); return r.json(); }
@@ -916,7 +1301,7 @@ let MAP = {cell_m: 0.1, hits: [], trail: [], waypoints: [], pose: null, nav: {},
 let VIEW = null;
 const cssVar = n => getComputedStyle(document.body).getPropertyValue(n).trim() || '#888';
 async function getMap(){
-  if (!TOKEN) return;
+  if (!TOKEN || document.hidden) return;
   try { const r = await fetch('/api/map?token='+encodeURIComponent(TOKEN)); if (r.ok) MAP = await r.json(); } catch(e){}
   drawMap(); renderWps();
 }
@@ -994,6 +1379,15 @@ async function putWps(pts){
   drawMap(); renderWps();
 }
 function clearWps(){ return putWps([]); }
+async function setServo(mode){
+  const body = {mode, target_m: +document.getElementById('svTarget').value};
+  if (mode === 'live'){
+    if (!confirm('Drive toward the tag (live, tethered)? Keep your hand near the e-stop.')) return;
+    body.confirm = 'TETHERED';
+  }
+  const r = await post('/api/servo', body);
+  if (r.error) alert(r.error);
+}
 async function clearMap(){ const r = await post('/api/map/clear'); if (r.error) alert(r.error); getMap(); }
 async function setNav(mode){
   if (mode === 'live' && !confirm('Drive the robot through the waypoints (live, tethered)? Keep your hand near the e-stop.')) return;
@@ -1016,7 +1410,7 @@ async function refresh(){
   let s;
   try {
     const r = await fetch('/api/status?token='+encodeURIComponent(TOKEN));
-    if (r.status === 401){ authFail(TOKEN ? 'Token rejected. Use the control or view link from scripts/dashboard_url.sh.' : 'Enter the token.'); return; }
+    if (r.status === 401){ authFail('Token rejected. Open the control link from scripts/dashboard_url.sh on the robot once; this browser will remember it.'); return; }
     s = await r.json();
   } catch(e){ return; }
   const o = s.odom, a = s.autonomy;
@@ -1053,28 +1447,57 @@ async function refresh(){
     cell('commands sent', s.commands_sent),
     cell('rejected', s.rejections, s.rejections?'warn':''),
   ].join('');
-  const r = s.rates_hz;
-  document.getElementById('rates').textContent =
-    `Hz  imu ${r.imu} · odom ${r.odom} · set_motor ${r.set_motor} · lidar ${r.lidar} · camera ${r.camera}`;
+  const names = {imu:'IMU', odom:'odometry', set_motor:'motor cmd', lidar:'LiDAR', camera:'D435i colour', depth:'D435i depth'};
+  document.getElementById('sensors').innerHTML = Object.keys(names).map(k => {
+    const v = s.sensors[k];
+    const age = v.age_s === null ? 'no data' : `${fmt(v.age_s,1)} s ago`;
+    return cell(`${names[k]} · ${age}`, `${fmt(v.hz,1)} Hz`, v.stale ? 'bad' : 'ok');
+  }).join('') +
+  cell('LiDAR to base_footprint TF', s.tf_lidar ? 'ok' : 'missing', s.tf_lidar ? 'ok' : 'bad') +
+  cell('camera intrinsics', s.camera.intrinsics ? 'ok' : 'missing', s.camera.intrinsics ? 'ok' : 'bad');
+  const sv = s.servo, tg = s.tag;
+  ['Off','Dry','Live'].forEach(n => document.getElementById('sv'+n).classList.toggle('on', sv.mode === n.toLowerCase()));
+  document.getElementById('svState').innerHTML =
+    `mode <b>${sv.mode}</b> · state <b>${sv.state}</b> · hold ${fmt(sv.target_m,2)} m · cmd vx ${fmt(sv.vx,3)} m/s, wz ${fmt(sv.wz,2)} rad/s` +
+    (tg ? ` · tag ${tg.id} (${tg.dict}): z ${fmt(tg.z_m,3)} m, bearing ${fmt(tg.bearing_deg,1)}°, seen ${fmt(tg.age_s,2)} s ago`
+        : ' · <span class="warn">no tag seen</span>') +
+    (sv.mode === 'dry' ? ' <span class="warn">(dry: not publishing)</span>' : '') +
+    (!tg && s.markers.length ? '<br>other markers in view: ' + s.markers.map(m => `${m.dict.slice(4).toLowerCase()} id ${m.id}`).join(', ') + ' (target is ID 10, 5x5)' : '') +
+    (!tg && !s.markers.length ? '<br>no markers in view (last scan every 2 s)' : '');
+  const cam = s.camera;
+  document.getElementById('camInfo').textContent =
+    `centre depth ${cam.depth_center_m === null ? '—' : fmt(cam.depth_center_m,2) + ' m'} · colour ${fmt(s.sensors.camera.hz,1)} Hz · depth ${fmt(s.sensors.depth.hz,1)} Hz`;
   document.getElementById('log').textContent = s.warnings.length
     ? s.warnings.map(w => `${new Date(w.t*1000).toLocaleTimeString()} ${w.level} ${w.node}: ${w.msg}`).join('\\n')
     : 'no warnings';
 }
 setInterval(refresh, 500); refresh();
 setInterval(getMap, 1000); getMap();
-async function getCloud(){
-  if (!TOKEN || !window.updateCloud) return;
+let camUrl = null;
+async function getCam(){
+  // Fetch with the header (not the URL) so the token stays out of the address, then show the blob.
+  if (!TOKEN || document.hidden) return;
+  const img = document.getElementById('camImg');
   try {
-    const r = await fetch('/api/cloud?token='+encodeURIComponent(TOKEN));
-    if (!r.ok) return;
-    const d = await r.json();
-    window.updateCloud(d.points, d.n);
-    document.getElementById('cloudInfo').textContent =
-      d.n ? `${d.n} points shown · buffer ${d.buffer_points.toLocaleString()} / ${d.buffer_max.toLocaleString()} over last ${d.window_s} s · gravity ${d.gravity}` + (d.tilt_deg === null ? '' : ` (tilt ${d.tilt_deg}°)`) + ` · ${d.accumulated ? 'accumulated' : 'single scan'}` : 'no LiDAR points yet';
+    const r = await fetch('/api/camera.jpg', {headers: {'X-Token': TOKEN}});
+    if (!r.ok) { img.hidden = true; return; }
+    const url = URL.createObjectURL(await r.blob());
+    img.onload = () => { if (camUrl) URL.revokeObjectURL(camUrl); camUrl = url; };
+    img.src = url;
+    img.hidden = false;
   } catch(e){}
 }
-setInterval(getCloud, 1000); getCloud();
-window.addEventListener('resize', drawMap);
+setInterval(getCam, 1000); getCam();
+// Redraw when the canvas changes size (card reflow, rotation). Only on a real size change: a redraw
+// that changed the canvas size would otherwise re-trigger the observer in a loop.
+let mapW = 0, mapH = 0;
+function mapResized(){
+  const c = document.getElementById('map');
+  if (c.clientWidth === mapW && c.clientHeight === mapH) return;
+  mapW = c.clientWidth; mapH = c.clientHeight; drawMap();
+}
+if (window.ResizeObserver) new ResizeObserver(mapResized).observe(document.getElementById('map'));
+window.addEventListener('resize', mapResized);
 </script>
 <script type="importmap">
 {"imports": {
@@ -1106,14 +1529,18 @@ scene.add(body);
 const geom = new THREE.BufferGeometry();
 const pts = new THREE.Points(geom, new THREE.PointsMaterial({size: 0.04, vertexColors: true}));
 scene.add(pts);
+let cloudW = 0, cloudH = 0;
 function resize() {
   const w = el.clientWidth, h = el.clientHeight;
-  if (!w || !h) return;
+  if (!w || !h || (w === cloudW && h === cloudH)) return;
+  cloudW = w; cloudH = h;
   renderer.setSize(w, h, false);
   camera.aspect = w / h;
   camera.updateProjectionMatrix();
 }
 window.addEventListener('resize', resize);
+// A hidden card reports 0 size; ResizeObserver fixes the renderer once it is laid out again.
+if (window.ResizeObserver) new ResizeObserver(resize).observe(el);
 resize();
 renderer.setAnimationLoop(() => { controls.update(); renderer.render(scene, camera); });
 // height ramp: blue at -0.5 m, green at 0.5 m, red at 1.5 m (base_footprint z)
@@ -1137,6 +1564,23 @@ window.updateCloud = (flat, n) => {
   geom.setAttribute('color', new THREE.BufferAttribute(col, 3));
   geom.setDrawRange(0, n);
 };
+// Poll the cloud here, not from the page script: that script can run before this module
+// has defined the drawing function, and the poll would then skip silently.
+async function pollCloud(){
+  const info = document.getElementById('cloudInfo');
+  if (!TOKEN) { info.textContent = 'no token yet: open the link from scripts/dashboard_url.sh'; return; }
+  if (document.hidden) return;
+  try {
+    const r = await fetch('/api/cloud', {headers: {'X-Token': TOKEN}});
+    if (!r.ok) { info.textContent = `LiDAR cloud: HTTP ${r.status}`; return; }
+    const d = await r.json();
+    window.updateCloud(d.points, d.n);
+    info.textContent = d.n
+      ? `${d.n} points shown · buffer ${d.buffer_points.toLocaleString()} / ${d.buffer_max.toLocaleString()} over last ${d.window_s} s · gravity ${d.gravity}` + (d.tilt_deg === null ? '' : ` (tilt ${d.tilt_deg}°)`) + ` · ${d.accumulated ? 'accumulated' : 'single scan'}`
+      : 'no LiDAR points yet';
+  } catch(e){ info.textContent = 'LiDAR cloud: ' + e; }
+}
+setInterval(pollCloud, 1000); pollCloud();
 window.resetCloudView = () => {
   camera.position.set(...HOME_POS);
   controls.target.set(...HOME_TARGET);

@@ -62,12 +62,17 @@ class WindowedCloud:
         self._scans.clear()
         self._count = 0
 
-    def stack(self, now=None):
+    def parts(self, now=None):
+        """The scan arrays inside the window, oldest first. Shared references, not copies."""
         if now is not None:
             self.prune(now)
-        if not self._scans:
+        return [p for _, p in self._scans]
+
+    def stack(self, now=None):
+        parts = self.parts(now)
+        if not parts:
             return np.zeros((0, 3), dtype=np.float32)
-        return np.concatenate([p for _, p in self._scans], axis=0)
+        return np.concatenate(parts, axis=0)
 
     def __len__(self):
         return self._count

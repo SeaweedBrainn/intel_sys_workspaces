@@ -3,8 +3,11 @@
 // check /opt/ros/humble/share/rmw_zenoh_cpp/config/ after the build).
 // Overrides are kept to what matters for one host:
 //  - connect to the local router only (no multicast scouting)
-//  - shared-memory transport for same-host pub/sub, which avoids copying large
-//    PointCloud2 / Image messages through the loopback stack
+//  - shared memory OFF. It was meant to avoid copying large PointCloud2 / Image messages,
+//    but on the Jetson every message above a few KB was silently dropped ("Unable to create
+//    POSIX shm segment: OS error 12" in the router log), while small messages (IMU at 250 Hz)
+//    still arrived. Measured 2026-11-23 with it off: RealSense colour and depth 15.1 Hz each,
+//    LiDAR cloud 12.0 Hz, IMU 252 Hz. Re-test before turning it back on.
 {
   mode: "client",
   connect: {
@@ -15,6 +18,6 @@
     gossip: { enabled: false },
   },
   transport: {
-    shared_memory: { enabled: true },
+    shared_memory: { enabled: false },
   },
 }

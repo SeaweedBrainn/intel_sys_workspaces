@@ -57,6 +57,8 @@ Reactive LiDAR exploration runs inside the dashboard node (logic in `scripts/aut
 
 The Unitree L2 is mounted tilted and only sees the front half (azimuth -90° to +90°). The rear sector is never observed (shown as `blind`), and only the front half of each side sector is. The LiDAR's view points at the rover's physical rear, so a `+vx` on `/cmd_vel` drives away from what it sees. The explorer decides in the LiDAR's frame ("forward" = toward what it sees), and the dashboard rotates its command 180° (`vx`, `vy` negated, `wz` unchanged) before publishing. `/api/status` shows both (`autonomy.vx/vy/wz` and `autonomy.cmd_vel`). Set `DASHBOARD_LIDAR_FACES_REAR=0` if the LiDAR is remounted facing forward. Manual drive is not flipped.
 
+The visual servo (ArUco target) sends its command through `servo_to_cmd_vel`, with forward and yaw flipped separately: `DASHBOARD_SERVO_FLIP_FORWARD` (default 1, because a live run drove away from the tag without it) and `DASHBOARD_SERVO_FLIP_YAW` (default 0, pending a tethered turn test). Set each to match what the robot actually does.
+
 Scene capture is done offline from recorded bags (`record_data.sh`), so the explorer aims to reach unvisited space, sweep surfaces sideways so the LiDAR sees them from many positions, and keep motion slow. It keeps a coarse visit grid (0.5 m cells) from wheel odometry and uses it to rank headings and strafe directions. Wheel odometry drifts, especially when strafing, so the grid is only a hint over a run of a few minutes.
 
 | State | Behavior |

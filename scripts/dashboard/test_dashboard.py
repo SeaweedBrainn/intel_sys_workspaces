@@ -145,3 +145,119 @@ def test_base_and_odom_frames_are_inverse():
     w = dashboard.base_to_odom(np.array([[1.0, 0.0, 0.0]], np.float32), (0.0, 0.0, math.pi / 2))
     assert np.allclose(w[0], [0.0, 1.0, 0.0], atol=1e-6)   # 1 m ahead after a 90 deg turn is +y
 
+
+
+def _image(encoding, h, w, step, data):
+    import types
+    return types.SimpleNamespace(encoding=encoding, height=h, width=w, step=step, data=data)
+
+
+def test_cloud_payload_is_cached_and_bounded():
+    import time
+    s = fresh()
+    s.odom = (1.0, 2.0, 0.5, 0, 0, 0)
+    now = time.monotonic()
+    rng = np.random.default_rng(1)
+    for i in range(100):
+        s.cloud_acc.add(now - 1.0 + i * 0.001, rng.uniform(-5, 5, (1500, 3)).astype(np.float32))
+    a = dashboard.cloud_payload(s)
+    b = dashboard.cloud_payload(s)
+    assert a is b                       # second request inside the TTL reuses the build
+    assert a['accumulated'] and a['n'] <= dashboard.CLOUD_MAX
+    dashboard.invalidate(s, 'cloud')
+    assert dashboard.cloud_payload(s) is not a
+
+
+def test_map_payload_cache_is_invalidated_on_edit():
+    import types
+    from waypoint import WaypointNav
+    s = fresh()
+    node = types.SimpleNamespace(nav=WaypointNav())
+    assert dashboard.map_payload(s, node)['waypoints'] == []
+    node.nav.set_points([(1.0, 1.0)])
+    assert dashboard.map_payload(s, node)['waypoints'] == []   # still inside the TTL
+    dashboard.invalidate(s, 'map')
+    assert dashboard.map_payload(s, node)['waypoints'] == [[1.0, 1.0]]
+
+
+def test_centre_depth_is_median_of_valid_patch_pixels():
+    depth = np.zeros((480, 640), dtype=np.uint16)
+    depth[220:260, 300:340] = 2000      # 2 m patch at the centre
+    assert dashboard.depth_patch_m(depth) == 2.0
+
+
+def test_centre_depth_needs_enough_valid_pixels():
+    depth = np.zeros((480, 640), dtype=np.uint16)
+    depth[240, 320] = 1500              # one valid pixel is not a reading
+    assert dashboard.depth_patch_m(depth) is None
+
+
+def test_centre_depth_ignores_row_padding():
+    h, w, step = 4, 60, 128            # 120 bytes of data per row, padded to 128
+    raw = np.full((h, step // 2), 9999, dtype=np.uint16)   # padding filled with a wrong value
+    raw[:, :w] = 3000                  # 3 m in the real pixels
+    msg = _image('16UC1', h, w, step, raw.tobytes())
+    assert dashboard.center_depth_m(msg) == 3.0
+    big = np.zeros((480, 640), dtype=np.uint16)
+    big[:, :] = 3000
+    msg = _image('16UC1', 480, 640, 1280, big.tobytes())
+    assert dashboard.center_depth_m(msg) == 3.0
+    assert dashboard.center_depth_m(_image('rgb8', 480, 640, 1920, big.tobytes())) is None
+
+
+def test_rgb8_is_converted_to_bgr_for_opencv():
+    data = bytes([10, 20, 30, 40, 50, 60])      # two RGB pixels, one row
+    img = dashboard.image_to_bgr(_image('rgb8', 1, 2, 6, data))
+    assert img.shape == (1, 2, 3)
+    assert list(img[0, 0]) == [30, 20, 10] and list(img[0, 1]) == [60, 50, 40]
+    assert dashboard.image_to_bgr(_image('mono8', 1, 2, 2, b'\x00\x01')) is None
+
+
+def test_camera_jpeg_none_without_a_frame():
+    assert dashboard.camera_jpeg(fresh()) is None
+
+
+def test_camera_jpeg_encodes_a_small_preview():
+    import pytest
+    if dashboard.cv2 is None:
+        pytest.skip('cv2 not available')
+    s = fresh()
+    rgb = np.full((480, 640, 3), 128, dtype=np.uint8)
+    s.color_msg = _image('rgb8', 480, 640, 640 * 3, rgb.tobytes())
+    jpg = dashboard.camera_jpeg(s)
+    assert jpg[:2] == b'\xff\xd8'      # JPEG start marker
+    decoded = dashboard.cv2.imdecode(np.frombuffer(jpg, np.uint8), dashboard.cv2.IMREAD_COLOR)
+    assert decoded.shape[1] == dashboard.CAMERA_PREVIEW_W
+
+
+def test_status_reports_every_stream_and_marks_silent_ones_stale():
+    import time
+    s = fresh()
+    p = dashboard.status_payload(s)
+    assert set(p['sensors']) == set(dashboard.TOPICS)
+    assert all(v['stale'] and v['age_s'] is None for v in p['sensors'].values())
+    s.mark('depth')
+    p = dashboard.status_payload(s)
+    assert p['sensors']['depth']['stale'] is False and p['sensors']['depth']['age_s'] < 1.0
+    assert p['camera']['depth_center_m'] is None
+    s.stamps['camera'].append(time.monotonic() - dashboard.STALE_S - 1)
+    assert dashboard.status_payload(s)['sensors']['camera']['stale'] is True
+
+
+def test_status_has_servo_tag_and_startup_checks():
+    s = fresh()
+    p = dashboard.status_payload(s)
+    assert p['servo']['mode'] == 'off' and p['servo']['state'] == 'IDLE'
+    assert p['servo']['target_m'] == 0.4572   # 18 in
+    assert p['tag'] is None and p['tf_lidar'] is False and p['camera']['intrinsics'] is False
+    s.servo_mode, s.tag, s.tag_t = 'dry', {'id': 6, 'dict': 'DICT_7X7_50', 'z_m': 1.2, 'x_m': 0.0,
+                                           'distance_m': 1.2, 'bearing_rad': 0.1}, dashboard.time.monotonic()
+    p = dashboard.status_payload(s)
+    assert p['servo']['mode'] == 'dry' and p['tag']['id'] == 6 and p['tag']['bearing_deg'] == 5.7
+
+
+def test_servo_command_flip_settings_are_independent():
+    assert dashboard.servo_to_cmd_vel(0.05, -0.2, flip_forward=True, flip_yaw=False) == (-0.05, -0.2)
+    assert dashboard.servo_to_cmd_vel(0.05, -0.2, flip_forward=False, flip_yaw=True) == (0.05, 0.2)
+    assert dashboard.servo_to_cmd_vel(0.05, -0.2, flip_forward=False, flip_yaw=False) == (0.05, -0.2)
+    assert dashboard.SERVO_FLIP_FORWARD is True and dashboard.SERVO_FLIP_YAW is False   # current settings

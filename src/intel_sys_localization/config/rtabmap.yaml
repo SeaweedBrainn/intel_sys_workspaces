@@ -40,7 +40,10 @@
     Icp/MaxTranslation: "2"
     Icp/MaxCorrespondenceDistance: "0.5"
     Icp/CorrespondenceRatio: "0.2"
-    RGBD/NeighborLinkRefining: "true"
+    # Trust Point-LIO between closures. Refining every step with ICP replaced its
+    # estimate with RTAB-Map's own scan matching; on the robot (2026-11-23, first loop)
+    # that pulled the map up to 1 m off with only one closure. Fine in the sim.
+    RGBD/NeighborLinkRefining: "false"
 
     # LiDAR-only loop closure: proximity in space, no bag-of-words.
     RGBD/ProximityBySpace: "true"

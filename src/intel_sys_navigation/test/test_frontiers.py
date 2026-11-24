@@ -2,7 +2,7 @@ import math
 
 import numpy as np
 
-from intel_sys_navigation.frontiers import Frontier, choose, find_frontiers, still_frontier
+from intel_sys_navigation.frontiers import Frontier, choose, find_frontiers, still_frontier, target_cell
 
 RES = 0.1
 
@@ -121,3 +121,14 @@ def test_robot_off_the_map_skips_the_reachability_filter():
     g = two_rooms()
     assert len(find_frontiers(g, RES, (0.0, 0.0), min_size=3, robot_xy=(50.0, 50.0))) == \
         len(find_frontiers(g, RES, (0.0, 0.0), min_size=3))
+
+
+def test_goal_set_back_from_frontier_is_still_valid_on_the_same_map():
+    # Regression (robot, 2026-11-24): with the goal set back from the frontier, checking
+    # the goal itself against frontier cells found none, and every goal was replaced
+    # each second. Watch the frontier cell nearest the goal instead.
+    cells = np.array([[1.0, y] for y in np.arange(0.5, 1.6, 0.1)])
+    f = Frontier(len(cells), (1.0, 1.0), (0.3, 1.0), cells)
+    assert not still_frontier([f], f.goal)
+    assert target_cell(f) == (1.0, 1.0) or math.isclose(target_cell(f)[1], 1.0, abs_tol=0.06)
+    assert still_frontier([f], target_cell(f))

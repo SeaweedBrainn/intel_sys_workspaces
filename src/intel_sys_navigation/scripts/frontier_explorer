@@ -29,7 +29,7 @@ from tf2_ros import Buffer, TransformListener
 
 import numpy as np
 
-from intel_sys_navigation.frontiers import choose, find_frontiers, still_frontier
+from intel_sys_navigation.frontiers import choose, find_frontiers, still_frontier, target_cell
 
 
 class FrontierExplorer(Node):
@@ -50,6 +50,7 @@ class FrontierExplorer(Node):
         self.checking = False     # waiting for the planner's answer on a candidate goal
         self.home = None
         self.goal = None          # (x, y) of the current frontier goal
+        self.target = None        # (x, y) of the frontier cell the goal is for
         self.goal_handle = None
         self.sent_at = None
         self.blacklist = []
@@ -174,7 +175,7 @@ class FrontierExplorer(Node):
                 self.stats['failed'] += 1
                 self.get_logger().warn(f'goal timed out after {age:.0f} s; blacklisted')
                 self.cancel()
-            elif not still_frontier(fronts, self.goal):
+            elif not still_frontier(fronts, self.target):
                 self.stats['replaced'] += 1
                 self.get_logger().info('frontier mapped before arrival; picking the next one')
                 # No cancel: the next goal preempts this one in Nav2. A cancel sent just
@@ -195,6 +196,7 @@ class FrontierExplorer(Node):
             return
         self.empty = 0
         heading = math.atan2(best.goal[1] - xy[1], best.goal[0] - xy[0])
+        self.target = target_cell(best)
         self.stats['goals'] += 1
         self.get_logger().info(
             f'frontier {self.stats["goals"]}: {best.size} cells, goal {best.goal[0]:.2f}, {best.goal[1]:.2f} '

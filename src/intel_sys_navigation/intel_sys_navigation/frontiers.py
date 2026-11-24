@@ -128,6 +128,15 @@ def find_frontiers(grid, resolution, origin, min_size=8, obstacle_clearance=0.15
     return out
 
 
+def target_cell(f):
+    """The frontier cell nearest the goal: what to watch for being mapped.
+
+    The goal itself sits up to goal_reach back from the frontier, in known space.
+    """
+    i = int(np.argmin(np.hypot(*(f.cells - np.asarray(f.goal)).T)))
+    return float(f.cells[i, 0]), float(f.cells[i, 1])
+
+
 def still_frontier(frontiers, goal, radius=0.4):
     """True while any frontier cell lies within radius of goal.
 

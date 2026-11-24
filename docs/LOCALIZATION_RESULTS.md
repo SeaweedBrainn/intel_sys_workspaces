@@ -20,7 +20,7 @@ Start the sim for the first two with `ros2 launch intel_sys_bringup sim.launch.p
 
 ## On the robot (2026-11-23)
 
-First run of the chain on the rover, following [ROBOT_TEST_PLAN.md](ROBOT_TEST_PLAN.md), from a separate `slam-chain` worktree on the Jetson (`~/intel_sys_slam`, image `intel-sys-rover:slam`). Bags (about 14 GB) and maps are only on the robot, under `~/intel_sys_slam/bags` and `data/`; copying over Wi-Fi ran at about 1 MB/s, so fetch them with a USB drive or over a wired link.
+First run of the chain on the rover, following [ROBOT_TEST_PLAN.md](ROBOT_TEST_PLAN.md), from a separate `slam-chain` worktree on the Jetson (`~/intel_sys_slam`, image `intel-sys-rover:slam`). The bags (about 14 GB) moved off the robot on 2026-11-24 to an external SSD (folder `intel_sys_bags/robot_20261123`); the maps are still on the robot under `data/`. Copying over Wi-Fi ran at about 1 MB/s, so move bags with a USB drive (exFAT needs `exfat-fuse` on the Jetson) or over a wired link.
 
 | Test | Result |
 |---|---|

@@ -18,6 +18,31 @@ Start the sim for the first two with `ros2 launch intel_sys_bringup sim.launch.p
 
 **Between repeated runs, kill every ROS process in the container and check none are left.** `kill -INT` on a scripted `ros2 launch` did not stop its nodes; a stale `point_lio_frame_adapter`, anchored on an earlier run's start, corrupted `/odom` in later runs and made every config look diverged.
 
+## On the robot (2026-11-23)
+
+First run of the chain on the rover, following [ROBOT_TEST_PLAN.md](ROBOT_TEST_PLAN.md), from a separate `slam-chain` worktree on the Jetson (`~/intel_sys_slam`, image `intel-sys-rover:slam`). Bags and maps are on the robot under `~/intel_sys_slam/bags` and `data/`, and copied to the laptop's `bags/robot_20261123/`.
+
+| Test | Result |
+|---|---|
+| Tests on the Jetson | build, 25 package tests, 56 script tests pass |
+| Front direction | forward drives toward the sensors |
+| Point-LIO keeps up | `/odom` 11.9 Hz vs LiDAR 12 Hz; Point-LIO about half a core, the Python body filter and frame adapter about another core together |
+| Point-LIO standing still, 60 s | 0.8 cm, 0.1° |
+| Loop (run 2), 21.5 m, back onto a taped mark | Point-LIO ends **1.9 cm** from its start (0.09%), 2° heading; RTAB-Map 2.5 cm, 12 proximity closures, its correction never above 2.8 cm |
+| Spin test, 720° left then 720° right | Point-LIO back within 1.2 cm and 1.9° |
+| Re-localization on run 2's map, short drive back to the tape | ends within about 6 cm and 5° of its start, matching the tape |
+| Nav2, 1 m straight ahead | reached; measured 91 cm forward, 7.6 cm right, rotated slightly left vs RTAB-Map 88.4 cm, 6.7 cm right, 5.2° left |
+| Nav2, back to the start (turn around, drive back, turn around) | reached; on the tape lengthwise, 4.2 cm right and 8.9° left per RTAB-Map, matching the measurement at the back wheel |
+
+Found and fixed on the robot:
+- **RTAB-Map's `RGBD/NeighborLinkRefining` dragged the map off.** It replaces every Point-LIO step with RTAB-Map's own ICP; on run 1 its correction grew to almost 1 m (heading swinging ±7°) with one closure. Off since run 2. Run 1's start mark moved, so its Point-LIO number (0.86 m) is not a drift measurement.
+- **Nav2's controller missed its 20 Hz rate** on the Jetson. 10 Hz with about 1,000 sampled motions keeps up.
+- **The Foxglove bridge showed nothing** when started before localization; restarting it after localization fixed it.
+
+Open:
+- Point-LIO's heading drifted about 13° on one short, unrecorded drive mixing driving and spins (RTAB-Map corrected it). The spin test rules out spinning alone. Record every drive until it shows up again.
+- Zenoh logs "Unable to create POSIX shm segment" (out of memory for its shared-memory pool) and falls back to normal transport; harmless so far.
+
 ## Simulation
 
 - **Mapping lap (Phase 6): passes.** About 40 m around `loop.sdf`: Point-LIO ends 0.5–1.5 cm from truth, SLAM (map frame) within 8 cm. RTAB-Map's proximity closures vary from lap to lap (0, 3, 4 and 5 seen on identical setups), so the test's "at least one closure" check can fail by chance.

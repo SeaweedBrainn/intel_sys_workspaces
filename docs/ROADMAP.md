@@ -4,11 +4,11 @@ Goal: autonomous driving on one localization chain: **Point-LIO** (LiDAR-inertia
 
 > Revised 2026-11-21: the localization plan moved from slam_toolbox + Isaac ROS Visual SLAM + an estimator-switching supervisor to Point-LIO → RTAB-Map → Nav2. See [Decisions](#decisions).
 
-## Current state (branch `slam-chain`, 2026-11-22)
+## Current state (branch `slam-chain`, 2026-11-23)
 
 - Working on the robot: STM32 bridge, mecanum controller, rmw_zenoh runtime, tailnet dashboard ([DASHBOARD.md](DASHBOARD.md)), remote SSH access ([REMOTE_ACCESS.md](REMOTE_ACCESS.md)). Reactive LiDAR exploration and waypoint following run in the dashboard on wheel odometry (see [Exploration](#exploration-scene-capture)).
-- Working in the sim and on recorded bags, not yet on the robot: Point-LIO → RTAB-Map → Nav2, including mapping, localization mode and the D435 as a second obstacle source. Evidence in [LOCALIZATION_RESULTS.md](LOCALIZATION_RESULTS.md).
-- The front is the sensor side (`forward_is_sensor_side`, see [Decisions](#decisions)). Not yet deployed on the Jetson, where teleop "forward" still drives the other way.
+- **Working on the robot (2026-11-23):** Point-LIO → RTAB-Map → Nav2. A 21.5 m loop closed within 2 cm, re-localization on the saved map works, and Nav2 reached its first goals at the first-run limits. Evidence in [LOCALIZATION_RESULTS.md](LOCALIZATION_RESULTS.md#on-the-robot-2026-11-23). It runs from a separate `slam-chain` worktree on the Jetson (`~/intel_sys_slam`, image `intel-sys-rover:slam`); the team's `~/intel_sys_workspaces` is still on `ahmad-zenoh`.
+- The front is the sensor side (`forward_is_sensor_side`, see [Decisions](#decisions)), confirmed on the robot from the `slam-chain` worktree. The team's checkout (`ahmad-zenoh`) still uses the old front.
 - Wheel odometry is estimated from **commanded** wheel speeds (`set_motor`), not encoders. It publishes `/odom/wheel` with TF off.
 - `robot.launch.py` still has localization and navigation commented out; on the robot they run as their own compose services (see [Infrastructure](#infrastructure)).
 - Hardware on the Jetson: STM32 at `/dev/rrc` (`ttyACM0`), publishing `/imu_raw`. Unitree L2 at `192.168.1.2`, publishing `/lidar/points_raw` at about 12 Hz and its built-in IMU on `/lidar/imu`. The RealSense D435 (no IMU) was not enumerated when last checked.
@@ -30,10 +30,12 @@ Phases 1 through 4 can proceed now. Phases 5–7 already run in the sim and on b
 
 ## Next
 
-- [ ] Rebuild the rover image and run the chain on the robot, following [ROBOT_TEST_PLAN.md](ROBOT_TEST_PLAN.md).
+- [x] Rebuild the rover image and run the chain on the robot, following [ROBOT_TEST_PLAN.md](ROBOT_TEST_PLAN.md) (2026-11-23; all steps passed).
 - [ ] Raise Nav2's first-run limits (0.2 m/s, no reverse, no BackUp recovery, set 2026-11-22) once it is proven on the robot.
-- [ ] Point-LIO on the Jetson: measure CPU and lag with a bag played on the Orin NX (about 30% of a laptop core at 0.1 m voxels; if it falls behind, switch to 0.4 m voxels).
-- [ ] Deploy the sensor-side front on the Jetson: controller and dashboard together; tell the team teleop "forward" has flipped.
+- [x] Point-LIO on the Jetson keeps up at 0.1 m voxels (about half a core). The Python body filter and frame adapter cost about as much again; port them to C++ or merge them if CPU gets tight.
+- [ ] Merge `slam-chain` with Ahmad's uncommitted dashboard, explorer, ArUco and servo work on `ahmad-zenoh` (`dashboard.py`, `explorer.py`, `frames.py` overlap), then switch the team checkout to it; tell the team teleop "forward" has flipped.
+- [ ] Find the 13° Point-LIO heading drift seen once on 2026-11-23 (not spinning alone); record every drive until it shows up again.
+- [ ] Dashboard page is wider than a laptop window (after the merge, since Ahmad is editing the same file).
 - [ ] Record a loop that ends exactly where it started (floor mark), with the camera on: measures drift, including height on level ground, and shows whether the camera's loop closures (`slam_camera:=true`) help.
 - [ ] Without a camera there is no global relocalization: the robot must start at the map origin or be given `/rtabmap/initialpose`. Add a "set pose" control to the dashboard, or a fixed home spot.
 - [ ] Divergence guard for Point-LIO (stop and restart it when its speed exceeds what the robot can do). Low priority: no divergence since the switch to the output model; revisit if it happens on the robot.

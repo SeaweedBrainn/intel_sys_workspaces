@@ -79,6 +79,7 @@ scripts/robot.sh ros2 topic echo /odom --once --field pose.pose.position
    scripts/robot.sh stop localization && scripts/robot.sh up localization
    scripts/record_bag.sh first_loop --all     # leave running; Ctrl-C at the end
    scripts/robot.sh up foxglove               # then connect to ws://<robot-tailscale-ip>:8765
+   # If Foxglove shows no frames, restart the bridge after localization is up: docker restart foxglove
    ```
 3. Drive slowly with the dashboard pad around a loop of at least 20 m, ideally through a corridor, and back onto the tape marks.
 4. Read the end position, stop recording, and stop localization so RTAB-Map saves the map.

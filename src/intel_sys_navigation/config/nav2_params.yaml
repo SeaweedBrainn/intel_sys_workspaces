@@ -205,8 +205,11 @@ local_costmap:
         transform_tolerance: 0.2
         mapping_mode: false
         map_save_duration: 60.0
-        # LiDAR and D435 both on the front (sensor side); each sees roughly the half ahead.
-        observation_sources: pointcloud camera
+        # LiDAR only. The D435's full cloud (about 50 MB/s) starved the LiDAR subscription
+        # under Zenoh on the robot (2026-11-24): the costmaps stopped receiving /lidar/points
+        # and Nav2 refused to move. The camera source below stays defined for a lighter,
+        # downsampled cloud later; add it back here then.
+        observation_sources: pointcloud
         pointcloud:
           data_type: PointCloud2
           topic: /lidar/points
@@ -286,8 +289,11 @@ global_costmap:
         transform_tolerance: 0.2
         mapping_mode: false
         map_save_duration: 60.0
-        # LiDAR and D435 both on the front (sensor side); each sees roughly the half ahead.
-        observation_sources: pointcloud camera
+        # LiDAR only. The D435's full cloud (about 50 MB/s) starved the LiDAR subscription
+        # under Zenoh on the robot (2026-11-24): the costmaps stopped receiving /lidar/points
+        # and Nav2 refused to move. The camera source below stays defined for a lighter,
+        # downsampled cloud later; add it back here then.
+        observation_sources: pointcloud
         pointcloud:
           data_type: PointCloud2
           topic: /lidar/points

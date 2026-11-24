@@ -177,7 +177,9 @@ class FrontierExplorer(Node):
             elif not still_frontier(fronts, self.goal):
                 self.stats['replaced'] += 1
                 self.get_logger().info('frontier mapped before arrival; picking the next one')
-                self.cancel()
+                # No cancel: the next goal preempts this one in Nav2. A cancel sent just
+                # before the new goal could cancel the new goal instead (seen in the sim).
+                self.goal = self.goal_handle = None
             else:
                 return
         best = choose(fronts, xy, yaw, self.blacklist)

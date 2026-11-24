@@ -118,7 +118,18 @@ controller_server:
       yaw_goal_tolerance: 0.20
 
     FollowPath:
-      plugin: "dwb_core::DWBLocalPlanner"
+      # Rotation Shim: when the path heads more than 45 deg away from the robot's heading,
+      # turn in place to face it first (checking the turn for collisions), then hand over
+      # to DWB. DWB alone could not turn around in place (no reversing) and the progress
+      # checker aborted (sim, 2026-11-24). It also keeps the front-facing sensors pointed
+      # where the robot is going.
+      plugin: "nav2_rotation_shim_controller::RotationShimController"
+      primary_controller: "dwb_core::DWBLocalPlanner"
+      angular_dist_threshold: 0.785
+      forward_sampling_distance: 0.5
+      rotate_to_heading_angular_vel: 0.5
+      max_angular_accel: 1.0
+      simulate_ahead_time: 1.0
       # First-run limits for the robot (2026-11-22): slow, and no reversing, since nothing
       # sees behind the robot (the L2 and the D435 both face +x). Raise once proven on the robot.
       debug_trajectory_details: false
@@ -318,10 +329,13 @@ global_costmap:
           model_type: 0
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
-        # 0.45 m with a slow fall-off (3.0) made every gap under ~1 m look expensive, so
-        # the robot detoured around gaps it fits through (2026-11-23).
-        cost_scaling_factor: 6.0
-        inflation_radius: 0.35
+        # Global (planner) only: wider than the local costmap's, so paths keep about
+        # 0.4-0.5 m from walls and corners where there is room. At 0.35 m paths passed
+        # corners 10-15 cm away and DWB could not turn there (sim, 2026-11-24). The
+        # fall-off (5.0) keeps a 0.8 m gap cheaper than a long detour; the earlier
+        # 0.45 m at 3.0 made every gap under ~1 m look expensive (robot, 2026-11-23).
+        cost_scaling_factor: 5.0
+        inflation_radius: 0.55
       always_send_full_costmap: True
 
 planner_server:

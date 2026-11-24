@@ -7,10 +7,26 @@ Grid values follow nav_msgs/OccupancyGrid: -1 unknown, 0..100 occupancy.
 import math
 from dataclasses import dataclass
 
+import cv2
 import numpy as np
-from scipy import ndimage
 
 FREE_MAX = 25  # cells at or below this occupancy count as free
+CROSS = cv2.getStructuringElement(cv2.MORPH_CROSS, (3, 3))
+
+
+def _dilate(mask, iterations=1):
+    return cv2.dilate(mask.astype(np.uint8), CROSS, iterations=iterations).astype(bool)
+
+
+def _label(mask):
+    """8-connected components: (labels, count); label 0 is the background."""
+    n, labels = cv2.connectedComponents(mask.astype(np.uint8), connectivity=8)
+    return labels, n - 1
+
+
+def _clearance(occupied, resolution):
+    """Distance in metres from each cell to the nearest occupied cell."""
+    return cv2.distanceTransform((~occupied).astype(np.uint8), cv2.DIST_L2, cv2.DIST_MASK_PRECISE) * resolution
 
 
 @dataclass
@@ -41,7 +57,7 @@ def reachable(free, clear, resolution, origin, robot_xy, passage_clearance=0.25,
     if pr.size == 0:
         return None
     i = int(np.argmin((pr + r0 - r) ** 2 + (pc + c0 - c) ** 2))
-    labels, _ = ndimage.label(passable, structure=np.ones((3, 3)))
+    labels, _ = _label(passable)
     return labels == labels[pr[i] + r0, pc[i] + c0]
 
 
@@ -65,13 +81,13 @@ def find_frontiers(grid, resolution, origin, min_size=8, obstacle_clearance=0.15
     unknown = grid < 0
     occupied = grid > FREE_MAX
     # 4-connected: a free cell with an unknown cell directly beside it
-    near_unknown = ndimage.binary_dilation(unknown, structure=ndimage.generate_binary_structure(2, 1))
+    near_unknown = _dilate(unknown)
     frontier = free & near_unknown
     if obstacle_clearance > 0 and occupied.any():
         r = max(1, math.ceil(obstacle_clearance / resolution - 1e-6))  # at least the clearance
-        frontier &= ~ndimage.binary_dilation(occupied, iterations=r)
-    labels, n = ndimage.label(frontier, structure=np.ones((3, 3)))
-    clear = ndimage.distance_transform_edt(~occupied) * resolution
+        frontier &= ~_dilate(occupied, iterations=r)
+    labels, n = _label(frontier)
+    clear = _clearance(occupied, resolution)
     reach = None
     if robot_xy is not None:
         reach = reachable(free, clear, resolution, origin, robot_xy, passage_clearance)

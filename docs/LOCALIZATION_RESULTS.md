@@ -33,6 +33,8 @@ First run of the chain on the rover, following [ROBOT_TEST_PLAN.md](ROBOT_TEST_P
 | Re-localization on run 2's map, short drive back to the tape | ends within about 6 cm and 5° of its start, matching the tape |
 | Nav2, 1 m straight ahead | reached; measured 91 cm forward, 7.6 cm right, rotated slightly left vs RTAB-Map 88.4 cm, 6.7 cm right, 5.2° left |
 | Nav2, back to the start (turn around, drive back, turn around) | reached; on the tape lengthwise, 4.2 cm right and 8.9° left per RTAB-Map, matching the measurement at the back wheel |
+| Nav2, long goal 6 m around the corner on run 2's map | reached 7 cm from the goal, 11° heading, no recoveries; RTAB-Map's correction at most 5.8 cm |
+| Nav2 with a box in the corridor | saw it, but oscillated between the long and short way around (obstacle fades from the costmap within 2.5 s out of view); stopped by hand |
 
 Found and fixed on the robot:
 - **RTAB-Map's `RGBD/NeighborLinkRefining` dragged the map off.** It replaces every Point-LIO step with RTAB-Map's own ICP; on run 1 its correction grew to almost 1 m (heading swinging ±7°) with one closure. Off since run 2. Run 1's start mark moved, so its Point-LIO number (0.86 m) is not a drift measurement.

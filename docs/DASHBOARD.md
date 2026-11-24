@@ -15,7 +15,7 @@ docker logs robot-dashboard 2>&1 | grep token     # the access token
 The robot's stacks must be running for live data and drive commands; start them first:
 
 ```bash
-scripts/robot.sh up             # STM32, LiDAR, robot description (see GETTING_STARTED.md)
+scripts/robot.sh up             # STM32, LiDAR, camera, robot description (see GETTING_STARTED.md)
 ```
 
 ## Reaching it

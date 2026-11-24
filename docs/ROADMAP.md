@@ -11,7 +11,7 @@ Goal: autonomous driving on one localization chain: **Point-LIO** (LiDAR-inertia
 - The front is the sensor side (`forward_is_sensor_side`, see [Decisions](#decisions)), confirmed on the robot from the `slam-chain` worktree. The team's checkout (`ahmad-zenoh`) still uses the old front.
 - Wheel odometry is estimated from **commanded** wheel speeds (`set_motor`), not encoders. It publishes `/odom/wheel` with TF off.
 - `robot.launch.py` still has localization and navigation commented out; on the robot they run as their own compose services (see [Infrastructure](#infrastructure)).
-- Hardware on the Jetson: STM32 at `/dev/rrc` (`ttyACM0`), publishing `/imu_raw`. Unitree L2 at `192.168.1.2`, publishing `/lidar/points_raw` at about 12 Hz and its built-in IMU on `/lidar/imu`. The RealSense D435 (no IMU) was not enumerated when last checked.
+- Hardware on the Jetson: STM32 at `/dev/rrc` (`ttyACM0`), publishing `/imu_raw`. Unitree L2 at `192.168.1.2`, publishing `/lidar/points_raw` at about 12 Hz and its built-in IMU on `/lidar/imu`. The RealSense is a **D435i** (it has an IMU, unused), on USB 3; since 2026-11-24 it runs as the `camera` service at 640×480, 15 fps.
 
 ## Phases
 
@@ -31,6 +31,8 @@ Phases 1 through 4 can proceed now. Phases 5–7 already run in the sim and on b
 ## Next
 
 - [x] Rebuild the rover image and run the chain on the robot, following [ROBOT_TEST_PLAN.md](ROBOT_TEST_PLAN.md) (2026-11-23; all steps passed).
+- [x] Tighter inflation so the robot takes gaps it fits (`e3357d6`); confirmed on the robot 2026-11-24.
+- [ ] **Camera in RTAB-Map by default (Phase 8)** (2026-11-24): the camera service, its frames and `SLAM_CAMERA` defaulting to true are done; the sim lap passes with it (see [results](LOCALIZATION_RESULTS.md#simulation)). Left: a mapping loop on the robot that shows visual loop closures, a check of the camera mount against the L2 cloud in Foxglove, and CPU load with everything running.
 - [ ] Raise Nav2's first-run limits (0.2 m/s, no reverse, no BackUp recovery, set 2026-11-22) once it is proven on the robot.
 - [x] Point-LIO on the Jetson keeps up at 0.1 m voxels (about half a core). The Python body filter and frame adapter cost about as much again; port them to C++ or merge them if CPU gets tight.
 - [ ] Merge `slam-chain` with Ahmad's uncommitted dashboard, explorer, ArUco and servo work on `ahmad-zenoh` (`dashboard.py`, `explorer.py`, `frames.py` overlap), then switch the team checkout to it; tell the team teleop "forward" has flipped.
@@ -39,7 +41,7 @@ Phases 1 through 4 can proceed now. Phases 5–7 already run in the sim and on b
 - [ ] **Zenoh subscriber goes deaf mid-run** (2026-11-23): Nav2's local costmap stopped receiving `/lidar/points` (still publishing at 12 Hz) right as a bag recorder stopped and another started; Nav2 refused to move until it was restarted. Same family as the re-subscribe bug under TODO. Top priority: a node that goes deaf silently loses obstacle sensing.
 - [ ] Dashboard page is wider than a laptop window (after the merge, since Ahmad is editing the same file).
 - [ ] Record a loop that ends exactly where it started (floor mark), with the camera on: measures drift, including height on level ground, and shows whether the camera's loop closures (`slam_camera:=true`) help.
-- [ ] Without a camera there is no global relocalization: the robot must start at the map origin or be given `/rtabmap/initialpose`. Add a "set pose" control to the dashboard, or a fixed home spot.
+- [ ] Without the camera there is no global relocalization (with it, RTAB-Map can place the robot anywhere it recognizes, once the camera is proven on the robot): the robot must start at the map origin or be given `/rtabmap/initialpose`. Add a "set pose" control to the dashboard, or a fixed home spot.
 - [ ] Divergence guard for Point-LIO (stop and restart it when its speed exceeds what the robot can do). Low priority: no divergence since the switch to the output model; revisit if it happens on the robot.
 
 ## Decisions

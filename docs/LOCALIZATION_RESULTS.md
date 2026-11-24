@@ -50,6 +50,7 @@ Open:
 - **Mapping lap (Phase 6): passes.** About 40 m around `loop.sdf`: Point-LIO ends 0.5–1.5 cm from truth, SLAM (map frame) within 8 cm. RTAB-Map's proximity closures vary from lap to lap (0, 3, 4 and 5 seen on identical setups), so the test's "at least one closure" check can fail by chance.
 - **Localization mode: passes.** Relaunched with `slam_localization:=true` on the saved map: re-localized 103 times, within 4.6 cm for the whole lap.
 - **With the sensor side as the front** and the D435 cloud in the costmaps, the lap passes (SLAM within 2.5 cm).
+- **With the camera in RTAB-Map (2026-11-24): passes, but no visual closures.** SLAM within 2.7 cm after the lap, 8 proximity closures. Visual words are stored (2,083 over 188 nodes, about 100 features each), but the plain gray walls of `loop.sdf` give nothing distinctive, so the sim checks the camera plumbing, not visual loop closure. The sim camera renders at about 1.7 Hz on a laptop without a GPU.
 - **Straight legs** (4 × 12 m at 0.3 m/s): within 0.3% with the output model; see [Point-LIO configuration](#point-lio-configuration).
 
 ## Real L2 bags

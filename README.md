@@ -39,9 +39,9 @@ On a laptop (simulation):
 On the robot:
 
 ```bash
-scripts/robot.sh up                  # Zenoh router, STM32, LiDAR, robot description
+scripts/robot.sh up                  # Zenoh router, STM32, LiDAR, camera, robot description
 scripts/dashboard.sh                 # dashboard, last
-scripts/robot.sh up localization     # Point-LIO + RTAB-Map, robot standing still
+scripts/robot.sh up localization     # Point-LIO + RTAB-Map (LiDAR + camera), robot standing still
 ```
 
 The front of the robot is the sensor side: `+x` and teleop "forward" drive toward the LiDAR and camera.

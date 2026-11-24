@@ -42,7 +42,7 @@ All commands run on the Jetson, from `~/intel_sys_workspaces`, unless they say o
 
 ```bash
 scripts/preflight.sh                  # host checks: STM32, LiDAR, disk, clock
-scripts/robot.sh up                   # Zenoh router, STM32, LiDAR, robot description
+scripts/robot.sh up                   # Zenoh router, STM32, LiDAR, camera, robot description
 scripts/robot.sh ps
 scripts/robot.sh ros2 topic hz /lidar/points_raw   # about 12 Hz (Ctrl-C to stop)
 scripts/robot.sh ros2 topic hz /lidar/imu          # about 250 Hz

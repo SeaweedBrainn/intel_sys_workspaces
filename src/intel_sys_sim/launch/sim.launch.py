@@ -103,6 +103,15 @@ def generate_launch_description():
         }]
     )
 
+    # 6. Simulated camera images and info in the optical frame (as the real driver publishes them)
+    sim_camera_frame_adapter_node = Node(
+        package='intel_sys_sim',
+        executable='sim_camera_frame_adapter',
+        name='sim_camera_frame_adapter',
+        output='screen',
+        parameters=[{'use_sim_time': use_sim_time}]
+    )
+
     return LaunchDescription([
         set_gz_resource_path,
         set_ign_resource_path,
@@ -119,5 +128,6 @@ def generate_launch_description():
         robot_description_launch,
         spawn_robot,
         ros_gz_bridge_node,
-        sim_lidar_time_adapter_node
+        sim_lidar_time_adapter_node,
+        sim_camera_frame_adapter_node
     ])

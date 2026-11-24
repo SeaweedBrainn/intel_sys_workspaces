@@ -14,8 +14,9 @@
 # deliberately for each session.
 #
 # Least privilege: only the STM32 stack gets privileged /dev access (the board can
-# re-enumerate as a different ttyACM). The LiDAR is on Ethernet; nothing else
-# touches hardware, and only the dashboard can write to the workspace.
+# re-enumerate as a different ttyACM). The LiDAR is on Ethernet. The camera gets the
+# video and USB device classes only, not privileged mode. Nothing else touches
+# hardware, and only the dashboard can write to the workspace.
 
 x-robot: &robot
   image: ${ROBOT_IMAGE:-intel-sys-rover:latest}
@@ -50,6 +51,20 @@ services:
     command: ros2 launch intel_sys_hardware lidar.launch.py
     restart: unless-stopped
 
+  camera:
+    <<: *robot
+    container_name: camerastack
+    # Only video (81) and raw USB (189) devices. /dev is mounted so the camera can
+    # re-enumerate (e.g. after a USB reset) without recreating the container.
+    volumes:
+      - ./:/workspaces/intel_sys:ro
+      - /dev:/dev
+    device_cgroup_rules:
+      - 'c 81:* rmw'
+      - 'c 189:* rmw'
+    command: ros2 launch intel_sys_hardware camera.launch.py
+    restart: unless-stopped
+
   description:
     <<: *robot
     container_name: robot-description
@@ -63,11 +78,13 @@ services:
       - ./:/workspaces/intel_sys:ro
       - ${ROBOT_DATA_DIR:-./data}:/data
     # SLAM_LOCALIZATION=true re-localizes on the saved map instead of mapping (and keeps it).
+    # SLAM_CAMERA=false runs RTAB-Map on the LiDAR alone. With the camera on (default),
+    # RTAB-Map waits for camera frames, so it stops updating if the camera stops.
     command: >
       ros2 launch intel_sys_localization localization.launch.py
       slam:=true database_path:=/data/rtabmap.db
       slam_localization:=${SLAM_LOCALIZATION:-false}
-      slam_camera:=${SLAM_CAMERA:-false}
+      slam_camera:=${SLAM_CAMERA:-true}
     profiles: [localization, navigation]
     restart: "no"
     stop_grace_period: 60s   # RTAB-Map writes the map database on shutdown

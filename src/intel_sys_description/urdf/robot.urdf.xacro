@@ -259,12 +259,22 @@
     <child link="camera_link"/>
   </joint>
 
-  <!-- Optical frames -->
+  <!-- Camera sensor frames, named as realsense2_camera names them. The robot description
+       is their only publisher (camera.launch.py sets publish_tf false), so the driver
+       and the URDF never fight over them. The sensor frames share camera_link's origin;
+       the color imager's factory offset (about 15 mm) is small next to the mount estimate.
+       Optical frames are z forward, x right, y down; images and depth are in them. -->
   <link name="camera_depth_frame"/>
   <joint name="camera_depth_joint" type="fixed">
-    <origin xyz="0 0 0" rpy="${-pi/2} 0 ${-pi/2}"/>
+    <origin xyz="0 0 0" rpy="0 0 0"/>
     <parent link="camera_link"/>
     <child link="camera_depth_frame"/>
+  </joint>
+  <link name="camera_depth_optical_frame"/>
+  <joint name="camera_depth_optical_joint" type="fixed">
+    <origin xyz="0 0 0" rpy="${-pi/2} 0 ${-pi/2}"/>
+    <parent link="camera_depth_frame"/>
+    <child link="camera_depth_optical_frame"/>
   </joint>
 
   <link name="camera_color_frame"/>
@@ -272,6 +282,12 @@
     <origin xyz="0 0 0" rpy="0 0 0"/>
     <parent link="camera_link"/>
     <child link="camera_color_frame"/>
+  </joint>
+  <link name="camera_color_optical_frame"/>
+  <joint name="camera_color_optical_joint" type="fixed">
+    <origin xyz="0 0 0" rpy="${-pi/2} 0 ${-pi/2}"/>
+    <parent link="camera_color_frame"/>
+    <child link="camera_color_optical_frame"/>
   </joint>
 
   <!-- ==================== GAZEBO SIMULATION PLUGINS ==================== -->
@@ -421,9 +437,10 @@
   <gazebo reference="camera_link">
     <sensor name="rgbd_camera" type="rgbd_camera">
       <always_on>true</always_on>
-      <update_rate>30</update_rate>
+      <update_rate>15</update_rate>
       <pose relative_to="camera_link">0 0 0 0 0 0</pose>
       <topic>/camera</topic>
+      <!-- The cloud is x forward in this frame; sim_camera_frame_adapter relabels the images optical -->
       <gz_frame_id>camera_color_frame</gz_frame_id>
       <camera>
         <horizontal_fov>1.5184</horizontal_fov>

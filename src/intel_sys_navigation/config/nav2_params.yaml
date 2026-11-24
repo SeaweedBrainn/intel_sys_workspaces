@@ -191,7 +191,7 @@ local_costmap:
         transform_tolerance: 0.2
         mapping_mode: false
         map_save_duration: 60.0
-        # LiDAR: on the robot's back, sees the rear half. Camera: D435 at the front, sees ahead.
+        # LiDAR and D435 both on the front (sensor side); each sees roughly the half ahead.
         observation_sources: pointcloud camera
         pointcloud:
           data_type: PointCloud2
@@ -271,7 +271,7 @@ global_costmap:
         transform_tolerance: 0.2
         mapping_mode: false
         map_save_duration: 60.0
-        # LiDAR: on the robot's back, sees the rear half. Camera: D435 at the front, sees ahead.
+        # LiDAR and D435 both on the front (sensor side); each sees roughly the half ahead.
         observation_sources: pointcloud camera
         pointcloud:
           data_type: PointCloud2

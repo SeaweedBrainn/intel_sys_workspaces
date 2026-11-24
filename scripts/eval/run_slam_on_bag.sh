@@ -6,9 +6,8 @@
 #
 # Plays the L2 cloud and IMU (and with CAMERA=1 the color image, the depth aligned
 # to color and the camera info) with --clock. The robot description gives the
-# sensor frames; the bag's /tf_static is not played (it has an older LiDAR mount).
-# The color optical frame is published here (the RealSense driver does it on the
-# robot). Records Point-LIO's raw odometry and RTAB-Map's optimized path, then
+# sensor frames, camera optical frames included; the bag's /tf_static is not played
+# (it has an older LiDAR mount). Records Point-LIO's raw odometry and RTAB-Map's optimized path, then
 # appends RTAB-Map's link counts from the database to <out_prefix>.log.
 set -uo pipefail
 BAG=$1; OUT=$2; RATE=${3:-1.0}; shift 3 2>/dev/null || shift $#
@@ -28,16 +27,13 @@ if [[ "${CAMERA:-0}" == "1" ]]; then
 fi
 
 cleanup() {
-  kill -INT "$EVAL" "$LOC" "$DESC" "$OPT" 2>/dev/null; sleep 4
-  pkill -9 -f "pointlio_mapping|point_lio_frame_adapter|lidar_body_filter|robot_state_publisher|rtabmap_slam/rtabmap|static_transform_publisher" 2>/dev/null
+  kill -INT "$EVAL" "$LOC" "$DESC" 2>/dev/null; sleep 4
+  pkill -9 -f "pointlio_mapping|point_lio_frame_adapter|lidar_body_filter|robot_state_publisher|rtabmap_slam/rtabmap" 2>/dev/null
 }
 trap cleanup EXIT
 
 ros2 launch intel_sys_description robot_description.launch.py use_sim_time:=true > "$OUT.desc.log" 2>&1 &
 DESC=$!
-ros2 run tf2_ros static_transform_publisher --frame-id camera_color_frame --child-frame-id camera_color_optical_frame \
-  --roll -1.5707963 --yaw -1.5707963 > /dev/null 2>&1 &
-OPT=$!
 ros2 launch intel_sys_localization localization.launch.py use_sim_time:=true slam:=true slam_camera:=$CAM \
   database_path:="$DB" "$@" > "$OUT.loc.log" 2>&1 &
 LOC=$!

@@ -73,13 +73,13 @@ Autonomy is early. Point-LIO, RTAB-Map and Nav2 run in the sim and on recorded b
 Each stack is a compose service in `docker-compose.robot.yml`, driven by `scripts/robot.sh`. Start the dashboard last, after its inputs exist, because it reads TF and topics once when it starts.
 
 ```bash
-scripts/robot.sh up                 # Zenoh router, STM32 stack, LiDAR driver, robot description
+scripts/robot.sh up                 # Zenoh router, STM32 stack, LiDAR and camera drivers, robot description
 scripts/dashboard.sh                # dashboard (last)
 scripts/robot.sh up localization    # optional: Point-LIO + RTAB-Map, mapping a new map
 scripts/robot.sh up navigation      # optional: also Nav2 on RTAB-Map's map
 ```
 
-Start localization with the robot standing still. To re-localize on the last saved map instead of mapping, use `SLAM_LOCALIZATION=true scripts/robot.sh up localization`; the database is `data/rtabmap.db`, and starting a new mapping session keeps the previous one as `data/rtabmap_<date>.db`. `SLAM_CAMERA=true` adds the D435 to RTAB-Map once the camera runs. `scripts/robot.sh up navigation` never restarts a running localization.
+Start localization with the robot standing still. To re-localize on the last saved map instead of mapping, use `SLAM_LOCALIZATION=true scripts/robot.sh up localization`; the database is `data/rtabmap.db`, and starting a new mapping session keeps the previous one as `data/rtabmap_<date>.db`. RTAB-Map uses the D435i as well as the LiDAR by default, for visual loop closures and place recognition. It waits for camera frames and stops updating without them, so `scripts/robot.sh up localization` refuses to start unless `/camera/camera_info` is publishing; `SLAM_CAMERA=false` runs it on the LiDAR alone. A map made without the camera has no visual words, so map again before relying on the camera in localization mode. `scripts/robot.sh up navigation` never restarts a running localization.
 
 Also useful: `scripts/robot.sh up foxglove` (Foxglove bridge on the Tailscale address, port 8765), `scripts/record_bag.sh <name>` (records into `bags/` until Ctrl-C) and `scripts/robot.sh ros2 <args>` (the `ros2` CLI on the robot's middleware).
 
@@ -145,7 +145,7 @@ The sim and `robot.launch.py` start a Foxglove bridge on port 8765. In [Foxglove
 ## Known gotchas
 
 - **Start order matters.** Start the dashboard after the STM32 and LiDAR stacks, or restart it afterward. Under the zenoh middleware, subscribers do not always re-match after a publisher restarts (see the roadmap).
-- **Camera is off.** `/camera/image_raw` is at 0 Hz because no camera node is launched. Nothing in the dashboard depends on it; RTAB-Map only uses it with `SLAM_CAMERA=true`.
+- **Camera.** The D435i runs as its own service (`camera`, container `camerastack`) at 640×480, 15 fps, color plus depth aligned to color and a depth cloud for Nav2. It must be on a USB 3 port; `scripts/robot.sh logs camera` shows `Device USB type: 3.2`. The robot description publishes its frames; the driver's TF is off.
 - **The front is the sensor side, and the rear is blind.** Since 2026-11-22, `+vx` (teleop "forward") drives toward the L2 and the D435; the switch is `forward_is_sensor_side` in `stm32.launch.py` (default true; false restores the old motor-convention front). Only the half the sensors face is seen. Check the sector readings in dry mode before any live run.
 - **Odometry drifts.** The map and waypoints are in the odometry frame. They are good for short runs only.
 - **Mecanum watchdog warnings.** While the dashboard is idle, the controller logs "cmd_vel stale … wheels commanded to zero" about every two seconds. That is the safety watchdog working.

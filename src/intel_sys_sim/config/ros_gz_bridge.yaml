@@ -32,26 +32,28 @@
   gz_type_name: "ignition.msgs.LaserScan"
   direction: GZ_TO_ROS
 
-- ros_topic_name: "/camera/image_raw"
+# Color, depth and camera_info go through sim_camera_frame_adapter (optical frame).
+- ros_topic_name: "/camera/image_sim"
   gz_topic_name: "/camera/image"
   ros_type_name: "sensor_msgs/msg/Image"
   gz_type_name: "ignition.msgs.Image"
   direction: GZ_TO_ROS
 
-- ros_topic_name: "/camera/depth/image_raw"
+- ros_topic_name: "/camera/depth/image_sim"
   gz_topic_name: "/camera/depth_image"
   ros_type_name: "sensor_msgs/msg/Image"
   gz_type_name: "ignition.msgs.Image"
   direction: GZ_TO_ROS
 
-# Depth camera point cloud, named like the real D435's (realsense2_camera pointcloud.enable)
+# Depth camera point cloud, named like the real D435's (realsense2_camera pointcloud.enable).
+# x forward, in camera_color_frame (gz_frame_id).
 - ros_topic_name: "/camera/depth/color/points"
   gz_topic_name: "/camera/points"
   ros_type_name: "sensor_msgs/msg/PointCloud2"
   gz_type_name: "ignition.msgs.PointCloudPacked"
   direction: GZ_TO_ROS
 
-- ros_topic_name: "/camera/camera_info"
+- ros_topic_name: "/camera/camera_info_sim"
   gz_topic_name: "/camera/camera_info"
   ros_type_name: "sensor_msgs/msg/CameraInfo"
   gz_type_name: "ignition.msgs.CameraInfo"

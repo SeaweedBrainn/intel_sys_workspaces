@@ -14,7 +14,14 @@
   <depend>intel_sys_localization</depend>
   <depend>geometry_msgs</depend>
   <depend>nav_msgs</depend>
+  <buildtool_depend>ament_cmake_python</buildtool_depend>
   <exec_depend>python3-yaml</exec_depend>
+  <exec_depend>python3-numpy</exec_depend>
+  <exec_depend>python3-scipy</exec_depend>
+  <exec_depend>rclpy</exec_depend>
+  <exec_depend>nav2_msgs</exec_depend>
+  <exec_depend>tf2_ros</exec_depend>
+  <test_depend>ament_cmake_pytest</test_depend>
 
   <test_depend>ament_lint_auto</test_depend>
   <test_depend>ament_lint_common</test_depend>

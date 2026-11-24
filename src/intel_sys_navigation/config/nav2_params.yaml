@@ -178,7 +178,10 @@ local_costmap:
       stvl_layer:
         plugin: "spatio_temporal_voxel_layer/SpatioTemporalVoxelLayer"
         enabled: true
-        voxel_decay: 1.0
+        # Seconds a voxel outlives its last sighting. The sensors only see ahead, so a short
+        # decay forgets an obstacle as soon as the robot turns to go around it. Voxels the
+        # sensors see through are still cleared at once (clearing: true).
+        voxel_decay: 5.0
         decay_model: 0
         voxel_size: 0.05
         track_unknown_space: true
@@ -258,7 +261,8 @@ global_costmap:
       stvl_layer:
         plugin: "spatio_temporal_voxel_layer/SpatioTemporalVoxelLayer"
         enabled: true
-        voxel_decay: 2.5
+        # Long enough to remember a detour's obstacle (see the local costmap).
+        voxel_decay: 20.0
         decay_model: 0
         voxel_size: 0.05
         track_unknown_space: true

@@ -1,0 +1,181 @@
+#!/usr/bin/env python3
+"""Frontier exploration: send Nav2 goals to the edge of the known map until none are left.
+
+Reads RTAB-Map's /map and the robot pose (map -> base_footprint), picks the best
+frontier (large, near, ahead; see intel_sys_navigation.frontiers) and sends it to
+Nav2's navigate_to_pose. A goal is dropped and re-picked when its frontier has
+been mapped; a goal that fails or takes too long is blacklisted. With no frontiers
+left it drives back to where it started (which also lets RTAB-Map close the loop)
+and exits. Only sends goals: Nav2 drives, and cancelling the goal stops it.
+
+    ros2 run intel_sys_navigation frontier_explorer --ros-args -p use_sim_time:=true
+"""
+import math
+
+import rclpy
+from action_msgs.msg import GoalStatus
+from geometry_msgs.msg import PoseStamped
+from nav2_msgs.action import NavigateToPose
+from nav_msgs.msg import OccupancyGrid
+from rclpy.action import ActionClient
+from rclpy.node import Node
+from rclpy.qos import DurabilityPolicy, QoSProfile, ReliabilityPolicy
+from rclpy.signals import SignalHandlerOptions
+from rclpy.time import Time
+from tf2_ros import Buffer, TransformListener
+
+import numpy as np
+
+from intel_sys_navigation.frontiers import choose, find_frontiers, still_frontier
+
+
+class FrontierExplorer(Node):
+    def __init__(self):
+        super().__init__('frontier_explorer')
+        self.min_size = self.declare_parameter('min_frontier_cells', 8).value
+        self.goal_timeout = self.declare_parameter('goal_timeout', 90.0).value
+        self.done_after = self.declare_parameter('empty_checks_before_done', 5).value
+        self.return_home = self.declare_parameter('return_home', True).value
+        self.map = None
+        self.tf = Buffer()
+        TransformListener(self.tf, self)
+        qos = QoSProfile(depth=1, durability=DurabilityPolicy.TRANSIENT_LOCAL,
+                         reliability=ReliabilityPolicy.RELIABLE)
+        self.create_subscription(OccupancyGrid, '/map', self.on_map, qos)
+        self.nav = ActionClient(self, NavigateToPose, 'navigate_to_pose')
+        self.home = None
+        self.goal = None          # (x, y) of the current frontier goal
+        self.goal_handle = None
+        self.sent_at = None
+        self.blacklist = []
+        self.empty = 0
+        self.state = 'explore'    # explore -> home -> done
+        self.stats = {'goals': 0, 'reached': 0, 'failed': 0, 'replaced': 0}
+        self.create_timer(1.0, self.step)
+
+    def on_map(self, msg):
+        self.map = msg
+
+    def pose(self):
+        try:
+            t = self.tf.lookup_transform('map', 'base_footprint', Time())
+        except Exception:  # noqa: BLE001 (TF not ready yet)
+            return None
+        q = t.transform.rotation
+        yaw = math.atan2(2 * (q.w * q.z + q.x * q.y), 1 - 2 * (q.y * q.y + q.z * q.z))
+        return (t.transform.translation.x, t.transform.translation.y), yaw
+
+    def frontiers(self):
+        m = self.map
+        grid = np.array(m.data, dtype=np.int8).reshape(m.info.height, m.info.width)
+        origin = (m.info.origin.position.x, m.info.origin.position.y)
+        return find_frontiers(grid, m.info.resolution, origin, self.min_size)
+
+    def send(self, xy, yaw):
+        g = NavigateToPose.Goal()
+        g.pose = PoseStamped()
+        g.pose.header.frame_id = 'map'
+        g.pose.header.stamp = self.get_clock().now().to_msg()
+        g.pose.pose.position.x, g.pose.pose.position.y = xy
+        g.pose.pose.orientation.z, g.pose.pose.orientation.w = math.sin(yaw / 2), math.cos(yaw / 2)
+        self.goal, self.sent_at, self.goal_handle = xy, self.get_clock().now(), None
+        self.nav.send_goal_async(g).add_done_callback(self.on_accepted)
+
+    def on_accepted(self, fut):
+        h = fut.result()
+        if not h.accepted:
+            self.finish(False, 'rejected')
+            return
+        self.goal_handle = h
+        h.get_result_async().add_done_callback(
+            lambda f, h=h: self.on_result(h, f.result().status))
+
+    def on_result(self, h, status):
+        if h is not self.goal_handle:
+            return  # an old goal we already replaced
+        self.finish(status == GoalStatus.STATUS_SUCCEEDED, f'status {status}')
+
+    def finish(self, ok, why):
+        if self.state == 'home':
+            self.get_logger().info(f'back home ({why}); exploration done: {self.stats}')
+            self.state = 'done'
+        elif ok:
+            self.stats['reached'] += 1
+        elif self.goal is not None:
+            self.stats['failed'] += 1
+            self.blacklist.append(self.goal)
+            self.get_logger().warn(f'goal {self.goal[0]:.2f}, {self.goal[1]:.2f} failed ({why}); blacklisted')
+        self.goal = self.goal_handle = None
+
+    def cancel(self):
+        if self.goal_handle is not None:
+            self.goal_handle.cancel_goal_async()
+        self.goal = self.goal_handle = None
+
+    def step(self):
+        if self.state == 'done' or self.map is None:
+            return
+        p = self.pose()
+        if p is None:
+            return
+        xy, yaw = p
+        if self.home is None:
+            self.home = (xy, yaw)
+            self.get_logger().info(f'home at {xy[0]:.2f}, {xy[1]:.2f}')
+        if self.state == 'home' or (self.goal is not None and self.goal_handle is None):
+            return  # driving home, or waiting for Nav2 to accept
+        if not self.nav.server_is_ready():
+            self.get_logger().info('waiting for navigate_to_pose', throttle_duration_sec=10)
+            return
+        fronts = self.frontiers()
+        if self.goal is not None:
+            age = (self.get_clock().now() - self.sent_at).nanoseconds * 1e-9
+            if age > self.goal_timeout:
+                self.blacklist.append(self.goal)
+                self.stats['failed'] += 1
+                self.get_logger().warn(f'goal timed out after {age:.0f} s; blacklisted')
+                self.cancel()
+            elif not still_frontier(fronts, self.goal):
+                self.stats['replaced'] += 1
+                self.get_logger().info('frontier mapped before arrival; picking the next one')
+                self.cancel()
+            else:
+                return
+        best = choose(fronts, xy, yaw, self.blacklist)
+        if best is None:
+            self.empty += 1
+            if self.empty >= self.done_after:
+                self.get_logger().info(f'no frontiers left; {self.stats}')
+                if self.return_home:
+                    self.state = 'home'
+                    self.send(*self.home)
+                else:
+                    self.state = 'done'
+            return
+        self.empty = 0
+        heading = math.atan2(best.goal[1] - xy[1], best.goal[0] - xy[0])
+        self.stats['goals'] += 1
+        self.get_logger().info(
+            f'frontier {self.stats["goals"]}: {best.size} cells, goal {best.goal[0]:.2f}, {best.goal[1]:.2f} '
+            f'({len(fronts)} frontiers)')
+        self.send(best.goal, heading)
+
+
+def main():
+    # Keep rclpy's context alive on Ctrl-C, so the cancel below still reaches Nav2.
+    rclpy.init(signal_handler_options=SignalHandlerOptions.NO)
+    node = FrontierExplorer()
+    try:
+        while rclpy.ok() and node.state != 'done':
+            rclpy.spin_once(node, timeout_sec=0.5)
+    except KeyboardInterrupt:
+        node.cancel()  # stop Nav2 too; spin so the cancel request goes out
+        for _ in range(4):
+            rclpy.spin_once(node, timeout_sec=0.1)
+    finally:
+        node.destroy_node()
+        rclpy.try_shutdown()
+
+
+if __name__ == '__main__':
+    main()

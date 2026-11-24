@@ -97,7 +97,7 @@ bt_navigator:
 controller_server:
   ros__parameters:
     use_sim_time: false
-    controller_frequency: 20.0
+    controller_frequency: 10.0   # 20 Hz missed its rate on the Jetson (2026-11-23)
     min_x_velocity_threshold: 0.001
     min_y_velocity_threshold: 0.001
     min_theta_velocity_threshold: 0.001
@@ -136,9 +136,11 @@ controller_server:
       decel_lim_x: -0.5
       decel_lim_y: -0.5
       decel_lim_theta: -1.0
-      vx_samples: 20
-      vy_samples: 20
-      vtheta_samples: 20
+      # ~1,000 candidate motions per cycle instead of 8,000: enough at 0.2 m/s, and the
+      # Jetson keeps up. Odd vy/vtheta counts so zero is one of the samples.
+      vx_samples: 8
+      vy_samples: 9
+      vtheta_samples: 15
       sim_time: 1.7
       linear_granularity: 0.05
       angular_granularity: 0.025

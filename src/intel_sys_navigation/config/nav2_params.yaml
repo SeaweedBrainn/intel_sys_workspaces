@@ -234,8 +234,10 @@ local_costmap:
           model_type: 0
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
-        cost_scaling_factor: 3.0
-        inflation_radius: 0.45
+        # 0.45 m with a slow fall-off (3.0) made every gap under ~1 m look expensive, so
+        # the robot detoured around gaps it fits through (2026-11-23).
+        cost_scaling_factor: 6.0
+        inflation_radius: 0.35
       always_send_full_costmap: True
 
 global_costmap:
@@ -312,8 +314,10 @@ global_costmap:
           model_type: 0
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
-        cost_scaling_factor: 3.0
-        inflation_radius: 0.45
+        # 0.45 m with a slow fall-off (3.0) made every gap under ~1 m look expensive, so
+        # the robot detoured around gaps it fits through (2026-11-23).
+        cost_scaling_factor: 6.0
+        inflation_radius: 0.35
       always_send_full_costmap: True
 
 planner_server:

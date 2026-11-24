@@ -45,6 +45,18 @@ Open:
 - Point-LIO's heading drifted about 13° on one short, unrecorded drive mixing driving and spins (RTAB-Map corrected it). The spin test rules out spinning alone. Record every drive until it shows up again.
 - Zenoh logs "Unable to create POSIX shm segment" (out of memory for its shared-memory pool) and falls back to normal transport; harmless so far.
 
+## On the robot with the camera (2026-11-24)
+
+D435i on USB 3 as the `camera` service (640×480, 15 fps), RTAB-Map with `SLAM_CAMERA=true` (commit `96ab7fc`), new map, driven by hand from the dashboard. No bag was recorded. Closures were logged from `/rtabmap/info` to `data/closures_20261124.log` on the robot.
+
+| Test | Result |
+|---|---|
+| Loop, 19.4 m in about 6 min, back to the start lined up by eye | RTAB-Map ends **4 cm** and 1.3° from its start; **9 visual loop closures** (7 back to the first node, the view offset shrinking from 48 cm to 4 cm while driving in; 2 mid-loop) and 1 proximity closure. Several candidates rejected (too few visual inliers, or the scans did not line up). |
+| Point-LIO alone over the same loop | ends **78 cm** and 10.9° from its start: 12° of heading drift against the map. Same symptom as the unrecorded 13° drive on 2026-11-23; cause unknown. New since the good 21.5 m loop: the camera driver running, and more CPU load. |
+| CPU, everything running (drivers, camera, dashboard, Foxglove, localization) | about 40% of the Jetson; RTAB-Map up to 77% of one core and 600 MB after the loop, the dashboard about 60%, Point-LIO 40–50%, the body filter about 40%, the camera driver 25% |
+
+The camera does what Phase 8 asked: visual closures on the robot, and RTAB-Map's map stays right while the odometry drifts. Between closures the costmaps still see the drifted odometry.
+
 ## Simulation
 
 - **Mapping lap (Phase 6): passes.** About 40 m around `loop.sdf`: Point-LIO ends 0.5–1.5 cm from truth, SLAM (map frame) within 8 cm. RTAB-Map's proximity closures vary from lap to lap (0, 3, 4 and 5 seen on identical setups), so the test's "at least one closure" check can fail by chance.

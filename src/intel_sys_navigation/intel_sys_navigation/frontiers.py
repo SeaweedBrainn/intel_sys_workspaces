@@ -21,8 +21,32 @@ class Frontier:
     cells: np.ndarray = None     # (n, 2) x, y of every cell, metres
 
 
+def reachable(free, clear, resolution, origin, robot_xy, passage_clearance=0.25, seed_radius=0.5):
+    """Cells the robot can reach from robot_xy through known free space.
+
+    Only cells with at least passage_clearance to an occupied cell are passable, so
+    gaps narrower than the robot don't connect regions. The robot's own cell may be
+    closer to a wall than that; the nearest passable cell within seed_radius seeds
+    the fill instead. Returns None when there is no seed (robot off the map).
+    """
+    passable = free & (clear >= passage_clearance)
+    r = int((robot_xy[1] - origin[1]) / resolution)
+    c = int((robot_xy[0] - origin[0]) / resolution)
+    k = int(math.ceil(seed_radius / resolution))
+    r0, r1 = max(r - k, 0), min(r + k + 1, free.shape[0])
+    c0, c1 = max(c - k, 0), min(c + k + 1, free.shape[1])
+    if r0 >= r1 or c0 >= c1:
+        return None
+    pr, pc = np.nonzero(passable[r0:r1, c0:c1])
+    if pr.size == 0:
+        return None
+    i = int(np.argmin((pr + r0 - r) ** 2 + (pc + c0 - c) ** 2))
+    labels, _ = ndimage.label(passable, structure=np.ones((3, 3)))
+    return labels == labels[pr[i] + r0, pc[i] + c0]
+
+
 def find_frontiers(grid, resolution, origin, min_size=8, obstacle_clearance=0.15,
-                   goal_clearance=0.45, goal_reach=1.5):
+                   goal_clearance=0.45, goal_reach=1.5, robot_xy=None, passage_clearance=0.25):
     """Frontiers in a (height, width) int8 grid.
 
     origin is the map position (x, y) of cell (0, 0). Frontier cells closer than
@@ -32,6 +56,9 @@ def find_frontiers(grid, resolution, origin, min_size=8, obstacle_clearance=0.15
     goal_clearance to any occupied cell, within goal_reach of it; a frontier without
     one (a pocket the robot does not fit into) is dropped. goal_clearance=0 puts the
     goal on the frontier itself.
+    With robot_xy, goals must also be reachable from the robot (see reachable), so
+    frontiers behind walls, e.g. free space mapped through glass or over a low wall,
+    are dropped.
     """
     grid = np.asarray(grid)
     free = (grid >= 0) & (grid <= FREE_MAX)
@@ -44,9 +71,15 @@ def find_frontiers(grid, resolution, origin, min_size=8, obstacle_clearance=0.15
         r = max(1, math.ceil(obstacle_clearance / resolution - 1e-6))  # at least the clearance
         frontier &= ~ndimage.binary_dilation(occupied, iterations=r)
     labels, n = ndimage.label(frontier, structure=np.ones((3, 3)))
+    clear = ndimage.distance_transform_edt(~occupied) * resolution
+    reach = None
+    if robot_xy is not None:
+        reach = reachable(free, clear, resolution, origin, robot_xy, passage_clearance)
     if goal_clearance > 0:
-        clear = ndimage.distance_transform_edt(~occupied) * resolution
-        gr, gc = np.nonzero(free & (clear >= goal_clearance))
+        ok = free & (clear >= goal_clearance)
+        if reach is not None:
+            ok &= reach
+        gr, gc = np.nonzero(ok)
         gx = origin[0] + (gc + 0.5) * resolution
         gy = origin[1] + (gr + 0.5) * resolution
     out = []
@@ -66,8 +99,15 @@ def find_frontiers(grid, resolution, origin, min_size=8, obstacle_clearance=0.15
                 continue
             goal = (float(gx[k]), float(gy[k]))
         else:
-            k = int(np.argmin((xs - cx) ** 2 + (ys - cy) ** 2))
-            goal = (float(xs[k]), float(ys[k]))
+            if reach is not None:
+                inside = reach[rows, cols]
+                if not inside.any():
+                    continue
+                xs_, ys_ = xs[inside], ys[inside]
+            else:
+                xs_, ys_ = xs, ys
+            k = int(np.argmin((xs_ - cx) ** 2 + (ys_ - cy) ** 2))
+            goal = (float(xs_[k]), float(ys_[k]))
         out.append(Frontier(int(rows.size), (cx, cy), goal, np.column_stack([xs, ys])))
     return out
 

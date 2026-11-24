@@ -88,3 +88,36 @@ def test_pocket_without_room_is_dropped():
     g[9:11, 18] = -1      # ...ending in unknown space
     assert find_frontiers(g, RES, (0.0, 0.0), min_size=1, obstacle_clearance=0,
                           goal_clearance=0.45, goal_reach=0.5) == []
+
+
+def two_rooms():
+    """Robot's room on the left, a free room behind a wall on the right, both with frontiers."""
+    g = np.full((20, 30), -1, dtype=np.int8)
+    g[2:18, 1:12] = 0      # robot's room
+    g[2:18, 12] = 100      # wall
+    g[2:18, 13:24] = 0     # free space seen through the wall
+    return g
+
+
+def test_frontier_behind_a_wall_is_unreachable():
+    g = two_rooms()
+    everything = find_frontiers(g, RES, (0.0, 0.0), min_size=3)
+    mine = find_frontiers(g, RES, (0.0, 0.0), min_size=3, robot_xy=(0.6, 1.0))
+    assert any(f.goal[0] > 1.3 for f in everything)
+    assert mine and all(f.goal[0] < 1.2 for f in mine)
+
+
+def test_gap_narrower_than_robot_does_not_connect():
+    g = two_rooms()
+    g[9:11, 12] = 0        # a 0.2 m gap in the wall
+    assert all(f.goal[0] < 1.2 for f in
+               find_frontiers(g, RES, (0.0, 0.0), min_size=3, robot_xy=(0.6, 1.0)))
+    g[6:14, 12] = 0        # a 0.8 m doorway does
+    assert any(f.goal[0] > 1.3 for f in
+               find_frontiers(g, RES, (0.0, 0.0), min_size=3, robot_xy=(0.6, 1.0)))
+
+
+def test_robot_off_the_map_skips_the_reachability_filter():
+    g = two_rooms()
+    assert len(find_frontiers(g, RES, (0.0, 0.0), min_size=3, robot_xy=(50.0, 50.0))) == \
+        len(find_frontiers(g, RES, (0.0, 0.0), min_size=3))

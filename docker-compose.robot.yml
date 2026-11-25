@@ -80,12 +80,13 @@ services:
     # SLAM_LOCALIZATION=true re-localizes on the saved map instead of mapping (and keeps it).
     # SLAM_CAMERA=false runs RTAB-Map on the LiDAR alone. With the camera on (default),
     # RTAB-Map waits for camera frames, so it stops updating if the camera stops.
+    # SLAM=false runs Point-LIO alone (odom only, no map): used for tag following.
     command: >
       ros2 launch intel_sys_localization localization.launch.py
-      slam:=true database_path:=/data/rtabmap.db
+      slam:=${SLAM:-true} database_path:=/data/rtabmap.db
       slam_localization:=${SLAM_LOCALIZATION:-false}
       slam_camera:=${SLAM_CAMERA:-true}
-    profiles: [localization, navigation]
+    profiles: [localization, navigation, follow]
     restart: "no"
     stop_grace_period: 60s   # RTAB-Map writes the map database on shutdown
 
@@ -95,8 +96,23 @@ services:
     depends_on:
       - zenohd
       - localization
-    command: ros2 launch intel_sys_navigation navigation.launch.py slam:=true
-    profiles: [navigation]
+    # With SLAM=false Nav2 plans in odom on the live LiDAR only (no stored map).
+    command: ros2 launch intel_sys_navigation navigation.launch.py slam:=${SLAM:-true}
+    profiles: [navigation, follow]
+    restart: "no"
+
+  follow:
+    <<: *robot
+    container_name: follow
+    depends_on:
+      - zenohd
+      - navigation
+    # Tag following through Nav2, in odom: a target that pauses must not end up in a stored
+    # map (RTAB-Map would keep it as an obstacle). Off until enabled:
+    #   ros2 service call /tag_follower/enable std_srvs/srv/SetBool "{data: true}"
+    # (or the service call panel in Foxglove). scripts/robot.sh up follow starts it.
+    command: ros2 run intel_sys_navigation tag_follower --ros-args -p map_frame:=odom
+    profiles: [follow]
     restart: "no"
 
   foxglove:

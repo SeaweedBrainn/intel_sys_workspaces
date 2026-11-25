@@ -234,10 +234,16 @@ local_costmap:
           clear_after_reading: true
           max_z: 2.0
           min_z: 0.05
+          # The L2 is a 3D LiDAR: STVL's LiDAR frustum (model_type 1). The depth-camera model
+          # (0) with a 360 deg horizontal FOV never cleared what the LiDAR saw through, so a
+          # moving target left a trail of obstacles for the whole voxel_decay (sim, 2026-11-24).
+          # decay_acceleration: voxels the LiDAR can see expire within about a second, while
+          # those out of view keep the full voxel_decay.
           vertical_fov_angle: 1.67
+          vertical_fov_padding: 0.05
           horizontal_fov_angle: 6.28
-          decay_acceleration: 1.0
-          model_type: 0
+          decay_acceleration: 5.0
+          model_type: 1
         camera:
           data_type: PointCloud2
           topic: /camera/depth/color/points
@@ -318,10 +324,16 @@ global_costmap:
           clear_after_reading: true
           max_z: 2.0
           min_z: 0.05
+          # The L2 is a 3D LiDAR: STVL's LiDAR frustum (model_type 1). The depth-camera model
+          # (0) with a 360 deg horizontal FOV never cleared what the LiDAR saw through, so a
+          # moving target left a trail of obstacles for the whole voxel_decay (sim, 2026-11-24).
+          # decay_acceleration: voxels the LiDAR can see expire within about a second, while
+          # those out of view keep the full voxel_decay.
           vertical_fov_angle: 1.67
+          vertical_fov_padding: 0.05
           horizontal_fov_angle: 6.28
-          decay_acceleration: 1.0
-          model_type: 0
+          decay_acceleration: 5.0
+          model_type: 1
         camera:
           data_type: PointCloud2
           topic: /camera/depth/color/points

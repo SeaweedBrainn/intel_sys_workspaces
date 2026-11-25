@@ -4,6 +4,7 @@
 #   scripts/robot.sh up                # drivers (STM32, LiDAR, camera) and robot description
 #   scripts/robot.sh up localization   # + Point-LIO and RTAB-Map (with the camera; SLAM_CAMERA=false for LiDAR only)
 #   scripts/robot.sh up navigation     # + Point-LIO, RTAB-Map and Nav2
+#   scripts/robot.sh up follow         # tag following: Point-LIO + Nav2 in odom (no RTAB-Map) + follower
 #   scripts/robot.sh up foxglove       # Foxglove bridge on the Tailscale address, port 8765
 #   scripts/robot.sh ros2 topic hz /odom   # ros2 CLI on the robot's middleware
 #   scripts/robot.sh <compose args>    # anything else, e.g. ps, logs -f lidar, stop navigation, down
@@ -45,6 +46,15 @@ if [[ "${1:-}" == "up" ]]; then
     navigation)               require_camera navigation
                               mkdir -p "${ROBOT_DATA_DIR:-data}"
                               exec docker compose --profile navigation up -d --no-recreate navigation ;;
+    # Following runs without RTAB-Map (SLAM=false), so a running mapping session must stop first.
+    follow)                   require_camera follow
+                              if docker inspect -f '{{.State.Running}}' localization 2>/dev/null | grep -q true \
+                                 && docker inspect -f '{{join .Config.Cmd " "}}' localization | grep -q 'slam:=true'; then
+                                echo "Localization is running with RTAB-Map. Stop it first: scripts/robot.sh stop navigation localization" >&2
+                                exit 1
+                              fi
+                              export SLAM=false
+                              exec docker compose --profile follow up -d --no-recreate follow ;;
     foxglove)                 export FOXGLOVE_ADDRESS="${FOXGLOVE_ADDRESS:-$(tailscale ip -4 2>/dev/null | head -1 || true)}"
                               exec docker compose --profile foxglove up -d foxglove ;;
   esac

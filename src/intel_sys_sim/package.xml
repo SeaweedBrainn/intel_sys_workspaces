@@ -16,6 +16,7 @@
   <depend>ros_gz_image</depend>
   <depend>geometry_msgs</depend>
   <depend>sensor_msgs</depend>
+  <exec_depend>intel_sys_navigation</exec_depend>
   <depend>nav_msgs</depend>
   <depend>rosgraph_msgs</depend>
 

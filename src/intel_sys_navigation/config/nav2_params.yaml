@@ -103,7 +103,7 @@ controller_server:
     min_theta_velocity_threshold: 0.001
     failure_tolerance: 0.3
     progress_checker_plugin: "progress_checker"
-    goal_checker_plugins: ["general_goal_checker"]
+    goal_checker_plugins: ["general_goal_checker", "follow_goal_checker"]
     controller_plugins: ["FollowPath"]
 
     progress_checker:
@@ -116,6 +116,15 @@ controller_server:
       plugin: "nav2_controller::SimpleGoalChecker"
       xy_goal_tolerance: 0.20
       yaw_goal_tolerance: 0.20
+
+    # Tag following (behavior_trees/follow_tag.xml): the goal keeps moving, so the checker
+    # must not latch "position reached" (stateful), or the robot only turns toward each new
+    # goal without driving to it (sim, 2026-11-24).
+    follow_goal_checker:
+      stateful: false
+      plugin: "nav2_controller::SimpleGoalChecker"
+      xy_goal_tolerance: 0.15
+      yaw_goal_tolerance: 0.25
 
     FollowPath:
       # Rotation Shim: when the path heads more than 45 deg away from the robot's heading,

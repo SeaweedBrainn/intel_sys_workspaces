@@ -1,0 +1,208 @@
+#!/usr/bin/env python3
+"""Follow an ArUco tag with Nav2: stay standoff metres from it, facing it.
+
+Each detection in the colour image (intel_sys_navigation.tag) is placed in the map frame
+through TF; the goal is the point standoff metres short of the tag on the line from the
+robot (intel_sys_navigation.follow). The first goal starts a navigate_to_pose action with
+the follow_tag.xml behaviour tree; later goals go to /goal_update, which that tree reads,
+so Nav2 keeps re-planning around obstacles as the tag moves.
+
+Off until enabled:
+    ros2 service call /tag_follower/enable std_srvs/srv/SetBool "{data: true}"
+Disabling, or losing the tag for lost_timeout seconds, cancels the goal and the robot stops;
+it starts again when the tag is seen while enabled.
+
+Publishes ~/tag_pose and ~/goal (map frame) for Foxglove.
+"""
+import math
+import os
+import signal
+
+import cv2
+import numpy as np
+import rclpy
+from ament_index_python.packages import get_package_share_directory
+from geometry_msgs.msg import PointStamped, PoseStamped
+from nav2_msgs.action import NavigateToPose
+from rclpy.action import ActionClient
+from rclpy.duration import Duration
+from rclpy.node import Node
+from rclpy.qos import qos_profile_sensor_data
+from rclpy.signals import SignalHandlerOptions
+from rclpy.time import Time
+from sensor_msgs.msg import CameraInfo, Image
+from std_srvs.srv import SetBool
+from tf2_ros import Buffer, TransformListener
+import tf2_geometry_msgs  # noqa: F401  (registers PointStamped with tf2)
+
+from intel_sys_navigation.follow import moved, standoff_goal
+from intel_sys_navigation.tag import MARKER_M, TAG_ID, TagFinder
+
+
+def to_gray(msg):
+    """sensor_msgs/Image (rgb8, bgr8, mono8) to a grey numpy image, or None."""
+    if msg.encoding in ('rgb8', 'bgr8'):
+        img = np.frombuffer(msg.data, np.uint8).reshape(msg.height, msg.step)[:, :msg.width * 3]
+        code = cv2.COLOR_RGB2GRAY if msg.encoding == 'rgb8' else cv2.COLOR_BGR2GRAY
+        return cv2.cvtColor(img.reshape(msg.height, msg.width, 3), code)
+    if msg.encoding == 'mono8':
+        return np.frombuffer(msg.data, np.uint8).reshape(msg.height, msg.step)[:, :msg.width]
+    return None
+
+
+class TagFollower(Node):
+    def __init__(self):
+        super().__init__('tag_follower')
+        p = self.declare_parameter
+        self.tag_id = p('tag_id', TAG_ID).value
+        self.marker_m = p('marker_size', MARKER_M).value
+        self.standoff = p('standoff', 0.457).value          # 18 in
+        self.lost_timeout = p('lost_timeout', 3.0).value
+        self.max_range = p('max_range', 4.0).value          # ignore farther detections
+        self.map_frame = p('map_frame', 'map').value
+        self.base_frame = p('base_frame', 'base_footprint').value
+        default_bt = os.path.join(get_package_share_directory('intel_sys_navigation'),
+                                  'behavior_trees', 'follow_tag.xml')
+        self.bt = p('behavior_tree', default_bt).value
+
+        self.finder = TagFinder(self.tag_id, self.marker_m)
+        self.K = self.D = None
+        self.tf = Buffer()
+        # Own thread: the image callback waits on TF, which the main loop could not update.
+        self.tf_listener = TransformListener(self.tf, self, spin_thread=True)
+        self.create_subscription(CameraInfo, p('camera_info_topic', '/camera/camera_info').value,
+                                 self.on_info, 10)
+        self.create_subscription(Image, p('image_topic', '/camera/image_raw').value,
+                                 self.on_image, qos_profile_sensor_data)
+        self.nav = ActionClient(self, NavigateToPose, 'navigate_to_pose')
+        self.update_pub = self.create_publisher(PoseStamped, '/goal_update', 10)
+        self.tag_pub = self.create_publisher(PoseStamped, '~/tag_pose', 10)
+        self.goal_pub = self.create_publisher(PoseStamped, '~/goal', 10)
+        self.create_service(SetBool, '~/enable', self.on_enable)
+        self.enabled = False
+        self.goal_handle = None        # active navigate_to_pose goal
+        self.sending = False
+        self.last_seen = None     # time of the last detection
+        self.last_goal = None     # (x, y, yaw) last sent
+        self.create_timer(0.5, self.watchdog)
+        self.get_logger().info(f'tag {self.tag_id}, standoff {self.standoff} m; disabled until ~/enable')
+
+    def on_info(self, msg):
+        self.K = np.array(msg.k).reshape(3, 3)
+        self.D = np.array(msg.d) if len(msg.d) else None
+
+    def on_enable(self, req, res):
+        self.enabled = bool(req.data)
+        if not self.enabled:
+            self.stop('disabled')
+        res.success, res.message = True, 'enabled' if self.enabled else 'disabled'
+        self.get_logger().info(res.message)
+        return res
+
+    def pose(self, x, y, yaw, stamp):
+        m = PoseStamped()
+        m.header.frame_id, m.header.stamp = self.map_frame, stamp
+        m.pose.position.x, m.pose.position.y = float(x), float(y)
+        m.pose.orientation.z, m.pose.orientation.w = math.sin(yaw / 2), math.cos(yaw / 2)
+        return m
+
+    def on_image(self, msg):
+        if self.K is None:
+            return
+        gray = to_gray(msg)
+        if gray is None:
+            self.get_logger().warn(f'unsupported image encoding {msg.encoding}', once=True)
+            return
+        det = self.finder.find(gray, self.K, self.D)
+        if det is None or det['z_m'] > self.max_range:
+            return
+        pt = PointStamped()
+        pt.header = msg.header
+        pt.point.x, pt.point.y, pt.point.z = det['x_m'], det['y_m'], det['z_m']
+        try:
+            try:
+                tag_map = self.tf.transform(pt, self.map_frame, timeout=Duration(seconds=0.1))
+            except Exception:  # noqa: BLE001
+                # Image newer than the latest odometry (12 Hz on the robot): use the latest
+                # transform; at 0.2 m/s that is a couple of centimetres off.
+                pt.header.stamp = Time().to_msg()
+                tag_map = self.tf.transform(pt, self.map_frame)
+            base = self.tf.lookup_transform(self.map_frame, self.base_frame, Time())
+        except Exception as e:  # noqa: BLE001
+            self.get_logger().warn(f'no transform to {self.map_frame}: {e}', throttle_duration_sec=5.0)
+            return
+        now = self.get_clock().now()
+        self.last_seen = now
+        tag_xy = (tag_map.point.x, tag_map.point.y)
+        robot_xy = (base.transform.translation.x, base.transform.translation.y)
+        goal = standoff_goal(robot_xy, tag_xy, self.standoff)
+        stamp = now.to_msg()
+        self.tag_pub.publish(self.pose(*tag_xy, goal[2], stamp))
+        if not self.enabled or not moved(self.last_goal, goal):
+            return
+        g = self.pose(*goal, stamp)
+        self.goal_pub.publish(g)
+        if self.goal_handle is None and not self.sending:
+            self.start(g)
+        elif self.goal_handle is not None:
+            self.update_pub.publish(g)
+        self.last_goal = goal
+
+    def start(self, g):
+        if not self.nav.server_is_ready():
+            self.get_logger().warn('navigate_to_pose not available', throttle_duration_sec=5.0)
+            return
+        goal = NavigateToPose.Goal()
+        goal.pose, goal.behavior_tree = g, self.bt
+        self.sending = True
+        self.nav.send_goal_async(goal).add_done_callback(self.on_accepted)
+        self.get_logger().info(f'following: goal {g.pose.position.x:.2f}, {g.pose.position.y:.2f}')
+
+    def on_accepted(self, fut):
+        self.sending = False
+        h = fut.result()
+        if not h.accepted:
+            self.get_logger().warn('Nav2 rejected the follow goal')
+            self.last_goal = None
+            return
+        self.goal_handle = h
+        h.get_result_async().add_done_callback(lambda f, h=h: self.on_result(h, f.result().status))
+
+    def on_result(self, h, status):
+        if h is self.goal_handle:  # ended on its own (failure): start again on the next detection
+            self.get_logger().info(f'follow goal ended (status {status})')
+            self.goal_handle, self.last_goal = None, None
+
+    def stop(self, why):
+        if self.goal_handle is not None:
+            self.goal_handle.cancel_goal_async()
+            self.get_logger().info(f'stopped following ({why})')
+        self.goal_handle, self.last_goal = None, None
+
+    def watchdog(self):
+        if self.goal_handle is None or self.last_seen is None:
+            return
+        if (self.get_clock().now() - self.last_seen).nanoseconds * 1e-9 > self.lost_timeout:
+            self.stop(f'tag not seen for {self.lost_timeout:.0f} s')
+
+
+def main():
+    # Our own SIGINT/SIGTERM handling so the cancel still reaches Nav2 on Ctrl-C.
+    rclpy.init(signal_handler_options=SignalHandlerOptions.NO)
+    node = TagFollower()
+    stop = []
+    for sig in (signal.SIGINT, signal.SIGTERM):
+        signal.signal(sig, lambda *_: stop.append(True))
+    try:
+        while rclpy.ok() and not stop:
+            rclpy.spin_once(node, timeout_sec=0.2)
+        node.stop('shutting down')
+        for _ in range(4):
+            rclpy.spin_once(node, timeout_sec=0.1)
+    finally:
+        node.destroy_node()
+        rclpy.try_shutdown()
+
+
+if __name__ == '__main__':
+    main()

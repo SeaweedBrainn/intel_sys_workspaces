@@ -1,0 +1,121 @@
+#!/usr/bin/env python3
+"""Sim only: spawn an ArUco tag on a stand in Gazebo and walk it along a path.
+
+For testing tag following (intel_sys_navigation tag_follower). The tag faces back along the
+direction of travel, so a robot following behind sees it; the
+stand is visible to the LiDAR, so it is an obstacle in the costmaps too.
+
+    ros2 run intel_sys_sim sim_tag_mover --world intel_sys_loop --speed 0.12 \
+        --path -6.5,1.5 -6.5,3.5 4.0,3.5
+
+Coordinates are Gazebo world metres. It pauses --wait seconds at the start, then moves.
+"""
+import argparse
+import math
+import os
+import subprocess
+import sys
+import tempfile
+import time
+
+import cv2
+
+from intel_sys_navigation.tag import TAG_ID
+
+TAG_SIZE = 0.1651           # black border edge, as printed
+BOARD = TAG_SIZE * 1.6      # with a white quiet zone of 0.3 of the size each side
+HEIGHT = 0.35               # tag centre above the floor
+
+
+def sdf():
+    """Tag model built from geometry: a white board and one black box per black marker cell.
+
+    (A textured plane or box did not render in Gazebo here, so no textures.)
+    """
+    cells = cv2.aruco.drawMarker(cv2.aruco.getPredefinedDictionary(cv2.aruco.DICT_5X5_50), TAG_ID, 7)
+    c = TAG_SIZE / 7
+    black = []
+    for r in range(7):
+        for k in range(7):
+            if cells[r, k] < 128:   # row 0 is the top; column 0 is the left, seen from the front
+                y = (k - 3) * c               # facing the model's +x side, the viewer's right is +y
+                z = HEIGHT + (3 - r) * c
+                black.append(f"""
+      <visual name="cell_{r}_{k}">
+        <pose>0.003 {y:.4f} {z:.4f} 0 0 0</pose>
+        <geometry><box><size>0.002 {c:.4f} {c:.4f}</size></box></geometry>
+        <material><diffuse>0 0 0 1</diffuse><ambient>0 0 0 1</ambient></material>
+      </visual>""")
+    return f"""<?xml version="1.0"?>
+<sdf version="1.8">
+  <model name="follow_tag">
+    <link name="link">
+      <gravity>false</gravity>
+      <inertial><mass>1.0</mass></inertial>
+      <visual name="board">
+        <pose>0 0 {HEIGHT} 0 0 0</pose>
+        <geometry><box><size>0.004 {BOARD} {BOARD}</size></box></geometry>
+        <material><diffuse>1 1 1 1</diffuse><ambient>1 1 1 1</ambient><emissive>0.6 0.6 0.6 1</emissive></material>
+      </visual>{''.join(black)}
+      <visual name="stand">
+        <pose>-0.03 0 {(HEIGHT - BOARD / 2) / 2} 0 0 0</pose>
+        <geometry><box><size>0.05 0.2 {HEIGHT - BOARD / 2}</size></box></geometry>
+        <material><diffuse>0.3 0.3 0.3 1</diffuse></material>
+      </visual>
+    </link>
+  </model>
+</sdf>"""
+
+
+def set_pose(world, x, y, yaw):
+    req = (f'name: "follow_tag", position: {{x: {x:.3f}, y: {y:.3f}, z: 0}}, '
+           f'orientation: {{z: {math.sin(yaw / 2):.5f}, w: {math.cos(yaw / 2):.5f}}}')
+    subprocess.run(['ign', 'service', '-s', f'/world/{world}/set_pose',
+                    '--reqtype', 'ignition.msgs.Pose', '--reptype', 'ignition.msgs.Boolean',
+                    '--timeout', '500', '--req', req], capture_output=True, check=False)
+
+
+def main():
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument('--world', default='intel_sys_loop')
+    ap.add_argument('--speed', type=float, default=0.12, help='m/s')
+    ap.add_argument('--wait', type=float, default=10.0, help='s before moving')
+    ap.add_argument('--rate', type=float, default=5.0, help='pose updates per second')
+    ap.add_argument('--path', nargs='+', default=['-6.5,1.5', '-6.5,3.5', '4.0,3.5'])
+    args = ap.parse_args(rclpy_args_free(sys.argv[1:]))
+    pts = [tuple(float(v) for v in p.split(',')) for p in args.path]
+
+    model = os.path.join(tempfile.gettempdir(), 'follow_tag.sdf')
+    with open(model, 'w') as f:
+        f.write(sdf())
+    yaw0 = math.atan2(pts[1][1] - pts[0][1], pts[1][0] - pts[0][0]) + math.pi
+    # Replace a tag left over from an earlier run (same name).
+    subprocess.run(['ign', 'service', '-s', f'/world/{args.world}/remove',
+                    '--reqtype', 'ignition.msgs.Entity', '--reptype', 'ignition.msgs.Boolean',
+                    '--timeout', '3000', '--req', 'name: "follow_tag" type: MODEL'],
+                   capture_output=True, check=False)
+    subprocess.run(['ros2', 'run', 'ros_gz_sim', 'create', '-world', args.world, '-file', model,
+                    '-name', 'follow_tag', '-x', str(pts[0][0]), '-y', str(pts[0][1]),
+                    '-Y', str(yaw0)], check=True)
+    print(f'tag {TAG_ID} at {pts[0]}; moving in {args.wait:.0f} s', flush=True)
+    time.sleep(args.wait)
+
+    dt = 1.0 / args.rate
+    for (x0, y0), (x1, y1) in zip(pts, pts[1:]):
+        seg = math.hypot(x1 - x0, y1 - y0)
+        yaw = math.atan2(y1 - y0, x1 - x0) + math.pi      # face back along the path
+        steps = max(1, int(seg / (args.speed * dt)))
+        for i in range(1, steps + 1):
+            t = i / steps
+            set_pose(args.world, x0 + t * (x1 - x0), y0 + t * (y1 - y0), yaw)
+            time.sleep(dt)
+    print('tag reached the end of its path', flush=True)
+
+
+def rclpy_args_free(argv):
+    """Drop --ros-args ... (ros2 run may append them)."""
+    return argv[:argv.index('--ros-args')] if '--ros-args' in argv else argv
+
+
+if __name__ == '__main__':
+    main()

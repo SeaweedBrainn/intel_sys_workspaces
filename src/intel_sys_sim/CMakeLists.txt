@@ -31,6 +31,8 @@ install(
   DESTINATION lib/${PROJECT_NAME}
 )
 
+install(PROGRAMS scripts/sim_tag_mover DESTINATION lib/${PROJECT_NAME})
+
 install(
   DIRECTORY launch worlds config
   DESTINATION share/${PROJECT_NAME}

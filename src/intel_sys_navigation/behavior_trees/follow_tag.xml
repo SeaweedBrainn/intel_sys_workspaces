@@ -1,0 +1,25 @@
+<!--
+  Follow a moving goal (tag following, scripts/tag_follower). Nav2's follow_point.xml
+  (Humble) without TruncatePath: the goal is already the stand-off point in front of the
+  tag, facing it. Truncating left an intermediate path pose as the end, whose heading
+  turned the robot away from the tag (sim, 2026-11-24). GoalUpdater replaces the goal
+  with each pose on /goal_update; the robot keeps following until the goal is cancelled.
+  No recoveries: if following fails, the follower cancels and tries again when it next
+  sees the tag.
+-->
+<root main_tree_to_execute="MainTree">
+  <BehaviorTree ID="MainTree">
+    <PipelineSequence name="FollowTag">
+      <RateController hz="2.0">
+        <Sequence>
+          <GoalUpdater input_goal="{goal}" output_goal="{updated_goal}">
+            <ComputePathToPose goal="{updated_goal}" path="{path}" planner_id="GridBased"/>
+          </GoalUpdater>
+        </Sequence>
+      </RateController>
+      <KeepRunningUntilFailure>
+        <FollowPath path="{path}" controller_id="FollowPath" goal_checker_id="follow_goal_checker"/>
+      </KeepRunningUntilFailure>
+    </PipelineSequence>
+  </BehaviorTree>
+</root>

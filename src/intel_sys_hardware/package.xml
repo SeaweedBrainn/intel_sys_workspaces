@@ -13,6 +13,8 @@
   <depend>sensor_msgs</depend>
   <depend>geometry_msgs</depend>
   <depend>nav_msgs</depend>
+  <depend>diagnostic_msgs</depend>
+  <exec_depend>rosidl_runtime_py</exec_depend>
   <depend>tf2_ros</depend>
   <depend>intel_sys_interfaces</depend>
   <depend>python3-serial</depend>

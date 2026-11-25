@@ -101,6 +101,17 @@ services:
     profiles: [navigation, follow]
     restart: "no"
 
+  # Frontier exploration, idle until /frontier_explorer/start (Foxglove's Explore button).
+  explorer:
+    <<: *robot
+    container_name: explorer
+    depends_on:
+      - zenohd
+      - navigation
+    command: ros2 run intel_sys_navigation frontier_explorer --ros-args -p wait_for_start:=true
+    profiles: [navigation]
+    restart: "no"
+
   follow:
     <<: *robot
     container_name: follow
@@ -127,6 +138,15 @@ services:
     profiles: [foxglove]
     restart: "no"
 
+  # Stream and transform health on /diagnostics, for Foxglove's Diagnostics panel.
+  health:
+    <<: *robot
+    container_name: robot-health
+    command: ros2 launch intel_sys_hardware health.launch.py
+    restart: unless-stopped
+
+  # Being replaced by Foxglove (docs/FOXGLOVE.md): only started by scripts/dashboard.sh, and
+  # no longer brought back after a reboot.
   dashboard:
     <<: *robot
     container_name: robot-dashboard
@@ -140,4 +160,5 @@ services:
       - DASHBOARD_TOKEN=${DASHBOARD_TOKEN:-}
       - DASHBOARD_VIEW_TOKEN=${DASHBOARD_VIEW_TOKEN:-}
     command: python3 /workspaces/intel_sys/scripts/dashboard/dashboard.py
-    restart: unless-stopped
+    profiles: [dashboard]
+    restart: "no"

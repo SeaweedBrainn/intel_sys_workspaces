@@ -1,74 +1,49 @@
 {
   "configById": {
-    "3D!1": {
+    "3D!main": {
       "cameraState": {
         "perspective": true,
-        "distance": 4.5,
-        "phi": 60,
+        "distance": 8.0,
+        "phi": 55,
         "thetaOffset": 45,
-        "targetOffset": [0, 0, 0],
-        "target": [0, 0, 0],
-        "targetOrientation": [0, 0, 0, 1],
+        "targetOffset": [
+          0,
+          0,
+          0
+        ],
+        "target": [
+          0,
+          0,
+          0
+        ],
+        "targetOrientation": [
+          0,
+          0,
+          0,
+          1
+        ],
         "fovy": 45,
         "near": 0.01,
         "far": 1000
       },
-      "followMode": "follow-pose",
+      "followMode": "follow-position",
       "followTf": "base_footprint",
-      "displayFrame": "base_link",
+      "displayFrame": "odom",
       "scene": {
         "enableStats": false,
         "meshUpAxis": "z_up",
-        "meshCoordinateFrame": "z_up",
         "transforms": {
           "showLabels": false,
-          "axisScale": 0.3,
-          "enableTransforms": false
+          "axisScale": 0.3
         }
       },
       "transforms": {
-        "showTransforms": false,
-        "frame:odom": {
-          "visible": false
-        },
-        "frame:base_footprint": {
-          "visible": false
-        },
-        "frame:base_link": {
-          "visible": false
-        },
-        "frame:lidar_link": {
-          "visible": false
-        },
-        "frame:camera_link": {
-          "visible": false
-        },
-        "frame:imu_link": {
-          "visible": false
-        },
-        "frame:camera_color_frame": {
-          "visible": false
-        },
-        "frame:camera_depth_frame": {
-          "visible": false
-        },
-        "frame:wheel_left_front_link": {
-          "visible": false
-        },
-        "frame:wheel_right_front_link": {
-          "visible": false
-        },
-        "frame:wheel_left_back_link": {
-          "visible": false
-        },
-        "frame:wheel_right_back_link": {
-          "visible": false
-        },
-        "frame:back_shell_link": {
-          "visible": false
-        }
+        "showTransforms": false
       },
       "topics": {
+        "/robot_description": {
+          "visible": true
+        },
         "/lidar/points": {
           "visible": true,
           "colorField": "z",
@@ -76,23 +51,39 @@
           "colorMap": "turbo",
           "minValue": -0.2,
           "maxValue": 1.5,
-          "pointSize": 3.0
+          "pointSize": 2
         },
-        "/scan": {
-          "visible": true,
-          "color": "#00ff00"
+        "/map": {
+          "visible": true
         },
-        "/odom": {
+        "/global_costmap/costmap": {
           "visible": true,
-          "color": "#0088ff"
+          "alpha": 0.4
         },
-        "/odom/filtered": {
+        "/local_costmap/costmap": {
+          "visible": false,
+          "alpha": 0.5
+        },
+        "/plan": {
+          "visible": true
+        },
+        "/local_plan": {
+          "visible": true
+        },
+        "/tag_follower/tag_pose": {
           "visible": true,
+          "type": "arrow",
+          "color": "#ff00ff"
+        },
+        "/tag_follower/goal": {
+          "visible": true,
+          "type": "arrow",
+          "color": "#00ff88"
+        },
+        "/goal_pose": {
+          "visible": true,
+          "type": "arrow",
           "color": "#ffaa00"
-        },
-        "/robot_description": {
-          "visible": true,
-          "meshUpAxis": "z_up"
         }
       },
       "publish": {
@@ -100,63 +91,96 @@
         "poseTopic": "/goal_pose"
       }
     },
-    "Image!1": {
-      "imageTopic": "/camera/image_raw",
-      "cameraTopic": "/camera/image_raw",
-      "transformMarkers": false,
-      "synchronize": false
+    "Image!camera": {
+      "imageMode": {
+        "imageTopic": "/camera/image_raw"
+      },
+      "imageTopic": "/camera/image_raw"
     },
-    "Plot!1": {
+    "DiagnosticSummary!health": {
+      "minLevel": 0,
+      "pinnedIds": [],
+      "hardwareIdFilter": "",
+      "sortByLevel": true
+    },
+    "CallService!followOn": {
+      "serviceName": "/tag_follower/enable",
+      "requestPayload": "{\"data\": true}",
+      "layout": "vertical",
+      "buttonText": "Follow tag: ON",
+      "buttonColor": "#2e7d32",
+      "buttonTooltip": "Start following ArUco tag 10 (scripts/robot.sh up follow)",
+      "editingMode": false
+    },
+    "CallService!followOff": {
+      "serviceName": "/tag_follower/enable",
+      "requestPayload": "{\"data\": false}",
+      "layout": "vertical",
+      "buttonText": "Follow tag: OFF",
+      "buttonColor": "#c62828",
+      "buttonTooltip": "Stop following; cancels the Nav2 goal",
+      "editingMode": false
+    },
+    "CallService!exploreStart": {
+      "serviceName": "/frontier_explorer/start",
+      "requestPayload": "{}",
+      "layout": "vertical",
+      "buttonText": "Explore: START",
+      "buttonColor": "#1565c0",
+      "buttonTooltip": "Frontier exploration on RTAB-Map's map (scripts/robot.sh up navigation)",
+      "editingMode": false
+    },
+    "CallService!exploreStop": {
+      "serviceName": "/frontier_explorer/stop",
+      "requestPayload": "{}",
+      "layout": "vertical",
+      "buttonText": "Explore: STOP",
+      "buttonColor": "#c62828",
+      "buttonTooltip": "Stop exploring; cancels the Nav2 goal",
+      "editingMode": false
+    },
+    "RawMessages!exploreState": {
+      "topicPath": "/frontier_explorer/state.data",
+      "diffEnabled": false,
+      "diffMethod": "custom",
+      "diffTopicPath": "",
+      "showFullMessageForDiff": false
+    },
+    "Teleop!drive": {
+      "topic": "/cmd_vel",
+      "publishRate": 10,
+      "upButton": {
+        "field": "linear-x",
+        "value": 0.15
+      },
+      "downButton": {
+        "field": "linear-x",
+        "value": -0.15
+      },
+      "leftButton": {
+        "field": "angular-z",
+        "value": 0.5
+      },
+      "rightButton": {
+        "field": "angular-z",
+        "value": -0.5
+      }
+    },
+    "Plot!battery": {
       "paths": [
         {
-          "value": "/imu_raw.linear_acceleration.x",
+          "value": "/battery.data",
           "enabled": true,
-          "color": "#ff0055",
-          "label": "Acc X"
-        },
-        {
-          "value": "/imu_raw.linear_acceleration.y",
-          "enabled": true,
-          "color": "#00cc88",
-          "label": "Acc Y"
-        },
-        {
-          "value": "/imu_raw.linear_acceleration.z",
-          "enabled": true,
-          "color": "#0088ff",
-          "label": "Acc Z"
-        },
-        {
-          "value": "/imu_raw.angular_velocity.z",
-          "enabled": true,
-          "color": "#ffaa00",
-          "label": "Gyro Z (Yaw Rate)"
+          "label": "battery (raw board value)"
         }
       ],
       "showXAxisLabels": true,
       "showYAxisLabels": true,
-      "minYValue": -15,
-      "maxYValue": 15
+      "showLegend": true
     },
-    "Teleop!1": {
-      "topic": "/cmd_vel",
-      "publishRate": 20,
-      "upButton": {
-        "linear": { "x": 0.4, "y": 0, "z": 0 },
-        "angular": { "x": 0, "y": 0, "z": 0 }
-      },
-      "downButton": {
-        "linear": { "x": -0.4, "y": 0, "z": 0 },
-        "angular": { "x": 0, "y": 0, "z": 0 }
-      },
-      "leftButton": {
-        "linear": { "x": 0, "y": 0, "z": 0 },
-        "angular": { "x": 0, "y": 0, "z": 0.8 }
-      },
-      "rightButton": {
-        "linear": { "x": 0, "y": 0, "z": 0 },
-        "angular": { "x": 0, "y": 0, "z": -0.8 }
-      }
+    "RosOut!log": {
+      "searchTerms": [],
+      "minLogLevel": 3
     }
   },
   "globalVariables": {},
@@ -165,17 +189,50 @@
     "speed": 1
   },
   "layout": {
-    "first": "3D!1",
-    "second": {
-      "first": "Image!1",
-      "second": {
-        "first": "Plot!1",
-        "second": "Teleop!1",
-        "direction": "column"
-      },
-      "direction": "column"
-    },
     "direction": "row",
-    "splitPercentage": 65
+    "splitPercentage": 60,
+    "first": "3D!main",
+    "second": {
+      "direction": "column",
+      "splitPercentage": 35,
+      "first": "Image!camera",
+      "second": {
+        "direction": "column",
+        "splitPercentage": 45,
+        "first": {
+          "direction": "row",
+          "splitPercentage": 55,
+          "first": "DiagnosticSummary!health",
+          "second": {
+            "direction": "column",
+            "splitPercentage": 80,
+            "first": {
+              "direction": "column",
+              "first": {
+                "direction": "row",
+                "first": "CallService!followOn",
+                "second": "CallService!followOff"
+              },
+              "second": {
+                "direction": "row",
+                "first": "CallService!exploreStart",
+                "second": "CallService!exploreStop"
+              }
+            },
+            "second": "RawMessages!exploreState"
+          }
+        },
+        "second": {
+          "direction": "row",
+          "splitPercentage": 40,
+          "first": "Teleop!drive",
+          "second": {
+            "direction": "column",
+            "first": "Plot!battery",
+            "second": "RosOut!log"
+          }
+        }
+      }
+    }
   }
 }

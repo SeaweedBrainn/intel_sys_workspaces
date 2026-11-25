@@ -34,6 +34,7 @@ Phases 1 through 4 can proceed now. Phases 5–7 already run in the sim and on b
 - [ ] Tag following: `scripts/robot.sh up follow`, then enable `/tag_follower/enable`; camera on, someone at the robot. Watch whether the follower's colour-image subscription starves anything under Zenoh (shared memory still on).
 - [ ] STVL LiDAR model (`model_type: 1`, `decay_acceleration: 5`) in both costmaps: affects all navigation. Check obstacles clear behind a person walking past, and that a box out of view is still remembered (the oscillation case, bag `nav_obstacle_20261123_170803`).
 - [ ] Two goal checkers (`general_goal_checker` for normal goals, `follow_goal_checker` for following): a normal Nav2 goal still reaches and stops.
+- [ ] Foxglove instead of the dashboard (`docs/FOXGLOVE.md`): import the layout, check the teleop speeds, the Follow and Explore buttons, and the Diagnostics panel (`robot-health` service). New `mecanum_controller` caps: 0.3 m/s, 1.0 rad/s.
 - [ ] Frontier explorer after the goal-replacing fix (`4be76f0`), with the wider global inflation and the Rotation Shim (`46f599d`).
 
 - [x] Rebuild the rover image and run the chain on the robot, following [ROBOT_TEST_PLAN.md](ROBOT_TEST_PLAN.md) (2026-11-23; all steps passed).

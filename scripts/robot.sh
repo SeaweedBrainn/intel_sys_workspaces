@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # Run docker compose on the robot's services (docker-compose.robot.yml) from the repo root.
 #
-#   scripts/robot.sh up                # drivers (STM32, LiDAR, camera) and robot description
+#   scripts/robot.sh up                # drivers (STM32, LiDAR, camera), robot description, health
 #   scripts/robot.sh up localization   # + Point-LIO and RTAB-Map (with the camera; SLAM_CAMERA=false for LiDAR only)
-#   scripts/robot.sh up navigation     # + Point-LIO, RTAB-Map and Nav2
+#   scripts/robot.sh up navigation     # + Point-LIO, RTAB-Map, Nav2 and the explorer (idle until started)
 #   scripts/robot.sh up follow         # tag following: Point-LIO + Nav2 in odom (no RTAB-Map) + follower
 #   scripts/robot.sh up foxglove       # Foxglove bridge on the Tailscale address, port 8765
 #   scripts/robot.sh ros2 topic hz /odom   # ros2 CLI on the robot's middleware
@@ -30,7 +30,7 @@ require_camera() {
 
 if [[ "${1:-}" == "up" ]]; then
   case "${2:-}" in
-    "")                       exec docker compose up -d zenohd stm32 lidar camera description ;;
+    "")                       exec docker compose up -d zenohd stm32 lidar camera description health ;;
     localization)             require_camera localization
                               DATA="${ROBOT_DATA_DIR:-data}"; mkdir -p "$DATA"
                               # Mapping starts a new database; keep the previous map instead of
@@ -45,7 +45,7 @@ if [[ "${1:-}" == "up" ]]; then
     # and in mapping mode wipe the map); start it only if it is not running yet.
     navigation)               require_camera navigation
                               mkdir -p "${ROBOT_DATA_DIR:-data}"
-                              exec docker compose --profile navigation up -d --no-recreate navigation ;;
+                              exec docker compose --profile navigation up -d --no-recreate navigation explorer ;;
     # Following runs without RTAB-Map (SLAM=false), so a running mapping session must stop first.
     follow)                   require_camera follow
                               if docker inspect -f '{{.State.Running}}' localization 2>/dev/null | grep -q true \

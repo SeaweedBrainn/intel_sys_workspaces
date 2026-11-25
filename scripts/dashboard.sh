@@ -53,7 +53,7 @@ HOST_BIND="${DASHBOARD_HOST:-${TS_IP:-127.0.0.1}}"
 # The dashboard service (docker-compose.robot.yml) restarts on its own after a crash
 # or reboot, keeping the tokens and bind address it was started with.
 export DASHBOARD_HOST="$HOST_BIND" DASHBOARD_PORT="$PORT"
-scripts/robot.sh up -d --force-recreate dashboard >/dev/null
+scripts/robot.sh --profile dashboard up -d --force-recreate dashboard >/dev/null
 
 sleep 6
 echo "dashboard bound to ${HOST_BIND}:${PORT}"

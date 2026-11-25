@@ -70,13 +70,13 @@ Autonomy is early. Point-LIO, RTAB-Map and Nav2 run in the sim and on recorded b
 
 ## Daily bring-up
 
-Each stack is a compose service in `docker-compose.robot.yml`, driven by `scripts/robot.sh`. Start the dashboard last, after its inputs exist, because it reads TF and topics once when it starts.
+Each stack is a compose service in `docker-compose.robot.yml`, driven by `scripts/robot.sh`. Foxglove is the UI ([FOXGLOVE.md](FOXGLOVE.md)); the dashboard below is being retired and only starts with `scripts/dashboard.sh`. Start the dashboard last, after its inputs exist, because it reads TF and topics once when it starts.
 
 ```bash
-scripts/robot.sh up                 # Zenoh router, STM32 stack, LiDAR and camera drivers, robot description
-scripts/dashboard.sh                # dashboard (last)
+scripts/robot.sh up                 # Zenoh router, STM32 stack, LiDAR and camera drivers, robot description, health
+scripts/robot.sh up foxglove        # Foxglove bridge: the UI (docs/FOXGLOVE.md)
 scripts/robot.sh up localization    # optional: Point-LIO + RTAB-Map, mapping a new map
-scripts/robot.sh up navigation      # optional: also Nav2 on RTAB-Map's map
+scripts/robot.sh up navigation      # optional: also Nav2 on RTAB-Map's map, and the explorer (idle)
 ```
 
 Start localization with the robot standing still. To re-localize on the last saved map instead of mapping, use `SLAM_LOCALIZATION=true scripts/robot.sh up localization`; the database is `data/rtabmap.db`, and starting a new mapping session keeps the previous one as `data/rtabmap_<date>.db`. RTAB-Map uses the D435i as well as the LiDAR by default, for visual loop closures and place recognition. It waits for camera frames and stops updating without them, so `scripts/robot.sh up localization` refuses to start unless `/camera/camera_info` is publishing; `SLAM_CAMERA=false` runs it on the LiDAR alone. A map made without the camera has no visual words, so map again before relying on the camera in localization mode. `scripts/robot.sh up navigation` never restarts a running localization.

@@ -11,6 +11,10 @@ left it drives back to where it started (which also lets RTAB-Map close the loop
 and exits. Only sends goals: Nav2 drives, and cancelling the goal stops it.
 
     ros2 run intel_sys_navigation frontier_explorer --ros-args -p use_sim_time:=true
+
+With wait_for_start:=true it stays idle until ~/start (std_srvs/Trigger, e.g. from
+Foxglove's service call panel), returns to idle when done or on ~/stop, and keeps running.
+~/state (std_msgs/String) reports idle, explore or home.
 """
 import math
 import signal
@@ -25,6 +29,8 @@ from rclpy.node import Node
 from rclpy.qos import DurabilityPolicy, QoSProfile, ReliabilityPolicy
 from rclpy.signals import SignalHandlerOptions
 from rclpy.time import Time
+from std_msgs.msg import String
+from std_srvs.srv import Trigger
 from tf2_ros import Buffer, TransformListener
 
 import numpy as np
@@ -39,6 +45,7 @@ class FrontierExplorer(Node):
         self.goal_timeout = self.declare_parameter('goal_timeout', 90.0).value
         self.done_after = self.declare_parameter('empty_checks_before_done', 5).value
         self.return_home = self.declare_parameter('return_home', True).value
+        self.wait_for_start = self.declare_parameter('wait_for_start', False).value
         self.map = None
         self.tf = Buffer()
         TransformListener(self.tf, self)
@@ -48,16 +55,48 @@ class FrontierExplorer(Node):
         self.nav = ActionClient(self, NavigateToPose, 'navigate_to_pose')
         self.planner = ActionClient(self, ComputePathToPose, 'compute_path_to_pose')
         self.checking = False     # waiting for the planner's answer on a candidate goal
-        self.home = None
-        self.goal = None          # (x, y) of the current frontier goal
-        self.target = None        # (x, y) of the frontier cell the goal is for
-        self.goal_handle = None
         self.sent_at = None
+        self.state_pub = self.create_publisher(String, '~/state', QoSProfile(
+            depth=1, durability=DurabilityPolicy.TRANSIENT_LOCAL, reliability=ReliabilityPolicy.RELIABLE))
+        self.create_service(Trigger, '~/start', self.on_start)
+        self.create_service(Trigger, '~/stop', self.on_stop)
+        self.reset()
+        self.set_state('idle' if self.wait_for_start else 'explore')   # explore -> home -> done/idle
+        self.create_timer(1.0, self.step)
+
+    def reset(self):
+        """Fresh session: new home, empty blacklist and stats."""
+        self.home = None
+        self.goal = self.target = self.goal_handle = None
         self.blacklist = []
         self.empty = 0
-        self.state = 'explore'    # explore -> home -> done
         self.stats = {'goals': 0, 'reached': 0, 'failed': 0, 'replaced': 0, 'no_path': 0}
-        self.create_timer(1.0, self.step)
+
+    def set_state(self, state):
+        self.state = state
+        self.state_pub.publish(String(data=state))
+
+    def end(self):
+        """Exploration over: idle (and keep running) when started by service, else done."""
+        self.set_state('idle' if self.wait_for_start else 'done')
+
+    def on_start(self, _req, res):
+        if self.state in ('explore', 'home'):
+            res.success, res.message = False, f'already running ({self.state})'
+            return res
+        self.reset()
+        self.set_state('explore')
+        res.success, res.message = True, 'exploring'
+        self.get_logger().info('started')
+        return res
+
+    def on_stop(self, _req, res):
+        was = self.state
+        self.cancel()
+        self.end()
+        res.success, res.message = True, f'stopped ({was}); {self.stats}'
+        self.get_logger().info(res.message)
+        return res
 
     def on_map(self, msg):
         self.map = msg
@@ -138,7 +177,7 @@ class FrontierExplorer(Node):
     def finish(self, ok, why):
         if self.state == 'home':
             self.get_logger().info(f'back home ({why}); exploration done: {self.stats}')
-            self.state = 'done'
+            self.end()
         elif ok:
             self.stats['reached'] += 1
         elif self.goal is not None:
@@ -153,7 +192,7 @@ class FrontierExplorer(Node):
         self.goal = self.goal_handle = None
 
     def step(self):
-        if self.state == 'done' or self.map is None:
+        if self.state in ('done', 'idle') or self.map is None:
             return
         p = self.pose()
         if p is None:
@@ -189,10 +228,10 @@ class FrontierExplorer(Node):
             if self.empty >= self.done_after:
                 self.get_logger().info(f'no frontiers left; {self.stats}')
                 if self.return_home:
-                    self.state = 'home'
+                    self.set_state('home')
                     self.send(*self.home)
                 else:
-                    self.state = 'done'
+                    self.end()
             return
         self.empty = 0
         heading = math.atan2(best.goal[1] - xy[1], best.goal[0] - xy[0])

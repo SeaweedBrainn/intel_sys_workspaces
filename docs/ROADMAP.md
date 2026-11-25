@@ -30,6 +30,12 @@ Phases 1 through 4 can proceed now. Phases 5–7 already run in the sim and on b
 
 ## Next
 
+**To test on the robot** (built and run in the sim only; the robot was off, 2026-11-24 evening):
+- [ ] Tag following: `scripts/robot.sh up follow`, then enable `/tag_follower/enable`; camera on, someone at the robot. Watch whether the follower's colour-image subscription starves anything under Zenoh (shared memory still on).
+- [ ] STVL LiDAR model (`model_type: 1`, `decay_acceleration: 5`) in both costmaps: affects all navigation. Check obstacles clear behind a person walking past, and that a box out of view is still remembered (the oscillation case, bag `nav_obstacle_20261123_170803`).
+- [ ] Two goal checkers (`general_goal_checker` for normal goals, `follow_goal_checker` for following): a normal Nav2 goal still reaches and stops.
+- [ ] Frontier explorer after the goal-replacing fix (`4be76f0`), with the wider global inflation and the Rotation Shim (`46f599d`).
+
 - [x] Rebuild the rover image and run the chain on the robot, following [ROBOT_TEST_PLAN.md](ROBOT_TEST_PLAN.md) (2026-11-23; all steps passed).
 - [x] Tighter inflation so the robot takes gaps it fits (`e3357d6`); confirmed on the robot 2026-11-24.
 - [ ] **Camera in RTAB-Map by default (Phase 8)** (2026-11-24): the camera service, its frames and `SLAM_CAMERA` defaulting to true are done; the sim lap passes with it (see [results](LOCALIZATION_RESULTS.md#simulation)). On the robot, a 19.4 m loop gave 9 visual closures and ended 4 cm from its start ([results](LOCALIZATION_RESULTS.md#on-the-robot-with-the-camera-2026-11-24)). Left: check the camera mount against the L2 cloud in Foxglove, and relocalize with the camera from somewhere other than the map origin.

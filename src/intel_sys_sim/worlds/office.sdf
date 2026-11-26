@@ -1,0 +1,258 @@
+<?xml version="1.0" ?>
+<sdf version="1.8">
+  <world name="intel_sys_office">
+    <!-- Physics parameters -->
+    <physics name="1ms" type="ignored">
+      <max_step_size>0.001</max_step_size>
+      <real_time_factor>1.0</real_time_factor>
+    </physics>
+
+    <!-- Essential System Plugins -->
+    <plugin filename="gz-sim-physics-system" name="gz::sim::systems::Physics"/>
+    <plugin filename="gz-sim-user-commands-system" name="gz::sim::systems::UserCommands"/>
+    <plugin filename="gz-sim-scene-broadcaster-system" name="gz::sim::systems::SceneBroadcaster"/>
+    <plugin filename="gz-sim-sensors-system" name="gz::sim::systems::Sensors">
+      <render_engine>ogre2</render_engine>
+    </plugin>
+    <plugin filename="gz-sim-imu-system" name="gz::sim::systems::Imu"/>
+
+    <!-- Sunlight -->
+    <light type="directional" name="sun">
+      <cast_shadows>true</cast_shadows>
+      <pose>0 0 10 0 0 0</pose>
+      <diffuse>0.8 0.8 0.8 1</diffuse>
+      <specular>0.2 0.2 0.2 1</specular>
+      <attenuation>
+        <range>1000</range>
+        <constant>0.9</constant>
+        <linear>0.01</linear>
+        <quadratic>0.001</quadratic>
+      </attenuation>
+      <direction>-0.5 0.1 -0.9</direction>
+    </light>
+
+    <!-- Ground Plane -->
+    <model name="ground_plane">
+      <static>true</static>
+      <link name="link">
+        <collision name="collision">
+          <geometry>
+            <plane>
+              <normal>0 0 1</normal>
+              <size>100 100</size>
+            </plane>
+          </geometry>
+        </collision>
+        <visual name="visual">
+          <geometry>
+            <plane>
+              <normal>0 0 1</normal>
+              <size>100 100</size>
+            </plane>
+          </geometry>
+          <material>
+            <ambient>0.8 0.8 0.8 1</ambient>
+            <diffuse>0.8 0.8 0.8 1</diffuse>
+            <specular>0.8 0.8 0.8 1</specular>
+          </material>
+        </visual>
+      </link>
+    </model>
+
+    <!-- Office world for exploration tests: a 22 x 2 m corridor with three rooms
+         on each side (doors 1.2 m wide, walls 2 m tall so the LiDAR can't see over
+         them). Start at the west end of the corridor, e.g. x=-9.5 y=0. -->
+    <model name="outer_north_0">
+      <static>true</static>
+      <pose>0.00 7.10 1.00 0 0 0.0</pose>
+      <link name="link">
+        <collision name="col"><geometry><box><size>22.40 0.20 2.00</size></box></geometry></collision>
+        <visual name="vis"><geometry><box><size>22.40 0.20 2.00</size></box></geometry><material><diffuse>0.6 0.6 0.6 1</diffuse></material></visual>
+      </link>
+    </model>
+    <model name="outer_south_0">
+      <static>true</static>
+      <pose>0.00 -7.10 1.00 0 0 0.0</pose>
+      <link name="link">
+        <collision name="col"><geometry><box><size>22.40 0.20 2.00</size></box></geometry></collision>
+        <visual name="vis"><geometry><box><size>22.40 0.20 2.00</size></box></geometry><material><diffuse>0.6 0.6 0.6 1</diffuse></material></visual>
+      </link>
+    </model>
+    <model name="outer_west">
+      <static>true</static>
+      <pose>-11.10 0.00 1.00 0 0 0.0</pose>
+      <link name="link">
+        <collision name="col"><geometry><box><size>0.20 14.00 2.00</size></box></geometry></collision>
+        <visual name="vis"><geometry><box><size>0.20 14.00 2.00</size></box></geometry><material><diffuse>0.6 0.6 0.6 1</diffuse></material></visual>
+      </link>
+    </model>
+    <model name="outer_east">
+      <static>true</static>
+      <pose>11.10 0.00 1.00 0 0 0.0</pose>
+      <link name="link">
+        <collision name="col"><geometry><box><size>0.20 14.00 2.00</size></box></geometry></collision>
+        <visual name="vis"><geometry><box><size>0.20 14.00 2.00</size></box></geometry><material><diffuse>0.6 0.6 0.6 1</diffuse></material></visual>
+      </link>
+    </model>
+    <model name="corridor_north_0">
+      <static>true</static>
+      <pose>-9.55 1.10 1.00 0 0 0.0</pose>
+      <link name="link">
+        <collision name="col"><geometry><box><size>2.90 0.20 2.00</size></box></geometry></collision>
+        <visual name="vis"><geometry><box><size>2.90 0.20 2.00</size></box></geometry><material><diffuse>0.6 0.6 0.6 1</diffuse></material></visual>
+      </link>
+    </model>
+    <model name="corridor_north_1">
+      <static>true</static>
+      <pose>-4.00 1.10 1.00 0 0 0.0</pose>
+      <link name="link">
+        <collision name="col"><geometry><box><size>5.80 0.20 2.00</size></box></geometry></collision>
+        <visual name="vis"><geometry><box><size>5.80 0.20 2.00</size></box></geometry><material><diffuse>0.6 0.6 0.6 1</diffuse></material></visual>
+      </link>
+    </model>
+    <model name="corridor_north_2">
+      <static>true</static>
+      <pose>3.25 1.10 1.00 0 0 0.0</pose>
+      <link name="link">
+        <collision name="col"><geometry><box><size>6.30 0.20 2.00</size></box></geometry></collision>
+        <visual name="vis"><geometry><box><size>6.30 0.20 2.00</size></box></geometry><material><diffuse>0.6 0.6 0.6 1</diffuse></material></visual>
+      </link>
+    </model>
+    <model name="corridor_north_3">
+      <static>true</static>
+      <pose>9.30 1.10 1.00 0 0 0.0</pose>
+      <link name="link">
+        <collision name="col"><geometry><box><size>3.40 0.20 2.00</size></box></geometry></collision>
+        <visual name="vis"><geometry><box><size>3.40 0.20 2.00</size></box></geometry><material><diffuse>0.6 0.6 0.6 1</diffuse></material></visual>
+      </link>
+    </model>
+    <model name="corridor_south_0">
+      <static>true</static>
+      <pose>-9.05 -1.10 1.00 0 0 0.0</pose>
+      <link name="link">
+        <collision name="col"><geometry><box><size>3.90 0.20 2.00</size></box></geometry></collision>
+        <visual name="vis"><geometry><box><size>3.90 0.20 2.00</size></box></geometry><material><diffuse>0.6 0.6 0.6 1</diffuse></material></visual>
+      </link>
+    </model>
+    <model name="corridor_south_1">
+      <static>true</static>
+      <pose>-2.50 -1.10 1.00 0 0 0.0</pose>
+      <link name="link">
+        <collision name="col"><geometry><box><size>6.80 0.20 2.00</size></box></geometry></collision>
+        <visual name="vis"><geometry><box><size>6.80 0.20 2.00</size></box></geometry><material><diffuse>0.6 0.6 0.6 1</diffuse></material></visual>
+      </link>
+    </model>
+    <model name="corridor_south_2">
+      <static>true</static>
+      <pose>4.75 -1.10 1.00 0 0 0.0</pose>
+      <link name="link">
+        <collision name="col"><geometry><box><size>5.30 0.20 2.00</size></box></geometry></collision>
+        <visual name="vis"><geometry><box><size>5.30 0.20 2.00</size></box></geometry><material><diffuse>0.6 0.6 0.6 1</diffuse></material></visual>
+      </link>
+    </model>
+    <model name="corridor_south_3">
+      <static>true</static>
+      <pose>9.80 -1.10 1.00 0 0 0.0</pose>
+      <link name="link">
+        <collision name="col"><geometry><box><size>2.40 0.20 2.00</size></box></geometry></collision>
+        <visual name="vis"><geometry><box><size>2.40 0.20 2.00</size></box></geometry><material><diffuse>0.6 0.6 0.6 1</diffuse></material></visual>
+      </link>
+    </model>
+    <model name="north_div_0">
+      <static>true</static>
+      <pose>-4.00 4.10 1.00 0 0 0.0</pose>
+      <link name="link">
+        <collision name="col"><geometry><box><size>0.20 5.80 2.00</size></box></geometry></collision>
+        <visual name="vis"><geometry><box><size>0.20 5.80 2.00</size></box></geometry><material><diffuse>0.6 0.6 0.6 1</diffuse></material></visual>
+      </link>
+    </model>
+    <model name="north_div_1">
+      <static>true</static>
+      <pose>3.00 4.10 1.00 0 0 0.0</pose>
+      <link name="link">
+        <collision name="col"><geometry><box><size>0.20 5.80 2.00</size></box></geometry></collision>
+        <visual name="vis"><geometry><box><size>0.20 5.80 2.00</size></box></geometry><material><diffuse>0.6 0.6 0.6 1</diffuse></material></visual>
+      </link>
+    </model>
+    <model name="south_div_0">
+      <static>true</static>
+      <pose>-2.00 -4.10 1.00 0 0 0.0</pose>
+      <link name="link">
+        <collision name="col"><geometry><box><size>0.20 5.80 2.00</size></box></geometry></collision>
+        <visual name="vis"><geometry><box><size>0.20 5.80 2.00</size></box></geometry><material><diffuse>0.6 0.6 0.6 1</diffuse></material></visual>
+      </link>
+    </model>
+    <model name="south_div_1">
+      <static>true</static>
+      <pose>5.00 -4.10 1.00 0 0 0.0</pose>
+      <link name="link">
+        <collision name="col"><geometry><box><size>0.20 5.80 2.00</size></box></geometry></collision>
+        <visual name="vis"><geometry><box><size>0.20 5.80 2.00</size></box></geometry><material><diffuse>0.6 0.6 0.6 1</diffuse></material></visual>
+      </link>
+    </model>
+    <model name="desk_nw">
+      <static>true</static>
+      <pose>-9.00 5.00 0.40 0 0 0.0</pose>
+      <link name="link">
+        <collision name="col"><geometry><box><size>1.60 0.80 0.80</size></box></geometry></collision>
+        <visual name="vis"><geometry><box><size>1.60 0.80 0.80</size></box></geometry><material><diffuse>0.7 0.6 0.5 1</diffuse></material></visual>
+      </link>
+    </model>
+    <model name="desk_nc">
+      <static>true</static>
+      <pose>0.50 4.50 0.40 0 0 0.0</pose>
+      <link name="link">
+        <collision name="col"><geometry><box><size>2.00 1.00 0.80</size></box></geometry></collision>
+        <visual name="vis"><geometry><box><size>2.00 1.00 0.80</size></box></geometry><material><diffuse>0.7 0.6 0.5 1</diffuse></material></visual>
+      </link>
+    </model>
+    <model name="shelf_ne">
+      <static>true</static>
+      <pose>10.40 4.00 0.80 0 0 0.0</pose>
+      <link name="link">
+        <collision name="col"><geometry><box><size>0.80 2.00 1.60</size></box></geometry></collision>
+        <visual name="vis"><geometry><box><size>0.80 2.00 1.60</size></box></geometry><material><diffuse>0.3 0.3 0.8 1</diffuse></material></visual>
+      </link>
+    </model>
+    <model name="crate_ne">
+      <static>true</static>
+      <pose>6.00 3.50 0.50 0 0 0.5</pose>
+      <link name="link">
+        <collision name="col"><geometry><box><size>0.80 0.80 1.00</size></box></geometry></collision>
+        <visual name="vis"><geometry><box><size>0.80 0.80 1.00</size></box></geometry><material><diffuse>0.8 0.6 0.2 1</diffuse></material></visual>
+      </link>
+    </model>
+    <model name="table_sw">
+      <static>true</static>
+      <pose>-7.00 -4.50 0.40 0 0 0.0</pose>
+      <link name="link">
+        <collision name="col"><geometry><box><size>1.50 1.50 0.80</size></box></geometry></collision>
+        <visual name="vis"><geometry><box><size>1.50 1.50 0.80</size></box></geometry><material><diffuse>0.7 0.6 0.5 1</diffuse></material></visual>
+      </link>
+    </model>
+    <model name="shelf_sc">
+      <static>true</static>
+      <pose>1.50 -6.40 0.80 0 0 0.0</pose>
+      <link name="link">
+        <collision name="col"><geometry><box><size>2.50 0.60 1.60</size></box></geometry></collision>
+        <visual name="vis"><geometry><box><size>2.50 0.60 1.60</size></box></geometry><material><diffuse>0.3 0.8 0.3 1</diffuse></material></visual>
+      </link>
+    </model>
+    <model name="crate_se">
+      <static>true</static>
+      <pose>8.50 -4.00 0.50 0 0 0.3</pose>
+      <link name="link">
+        <collision name="col"><geometry><box><size>0.80 0.80 1.00</size></box></geometry></collision>
+        <visual name="vis"><geometry><box><size>0.80 0.80 1.00</size></box></geometry><material><diffuse>0.8 0.6 0.2 1</diffuse></material></visual>
+      </link>
+    </model>
+    <model name="pillar_corr">
+      <static>true</static>
+      <pose>3.50 0.00 1.00 0 0 0.0</pose>
+      <link name="link">
+        <collision name="col"><geometry><box><size>0.30 0.30 2.00</size></box></geometry></collision>
+        <visual name="vis"><geometry><box><size>0.30 0.30 2.00</size></box></geometry><material><diffuse>0.5 0.5 0.5 1</diffuse></material></visual>
+      </link>
+    </model>
+  </world>
+</sdf>

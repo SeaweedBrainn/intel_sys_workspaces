@@ -1,14 +1,25 @@
 #!/usr/bin/env python3
 """Frontier exploration: send Nav2 goals to the edge of the known map until none are left.
 
-Reads RTAB-Map's /map and the robot pose (map -> base_footprint), picks the best
-frontier (large, near, ahead; see intel_sys_navigation.frontiers) and sends it to
-Nav2's navigate_to_pose. Only frontiers the robot can reach through known free space
-count, and Nav2's planner must find a path to a goal before it is sent; goals
-without one are blacklisted at once. A goal is dropped and re-picked when its frontier has
-been mapped; a goal that fails or takes too long is blacklisted. With no frontiers
-left it drives back to where it started (which also lets RTAB-Map close the loop)
-and exits. Only sends goals: Nav2 drives, and cancelling the goal stops it.
+Reads RTAB-Map's /map and the robot pose (map -> base_footprint), chooses a frontier
+and sends it to Nav2's navigate_to_pose. With goal_strategy:=tour (the default; see
+intel_sys_navigation.tour) each frontier gets the unknown area its goal would show the
+front-facing sensors and a heading that faces it; the visiting order of all of them is
+planned over real path lengths and turns, and the robot drives to the first stop. The
+tour is re-planned each second, and the goal only changes when another tour is more
+than switch_hysteresis cheaper. Frontiers that would reveal less than min_gain m^2
+don't count, which is also what ends exploration. goal_strategy:=greedy picks the best
+single frontier instead (large, near, ahead; see intel_sys_navigation.frontiers).
+
+Only frontiers the robot can reach through known free space count, and Nav2's
+planner must find a path to a goal before it is sent; goals without one are
+blacklisted at once. When several goals in a row are refused, the robot itself is
+probably boxed in (e.g. inside an obstacle's inflation): those goals are released
+and the next one goes to Nav2, whose recoveries can free the robot. A goal is
+dropped and re-picked when its frontier has been mapped; a goal that is reached,
+fails or takes too long is blacklisted. With no frontiers left it drives back to
+where it started (which also lets RTAB-Map close the loop) and exits. Only sends
+goals: Nav2 drives, and cancelling the goal stops it.
 
     ros2 run intel_sys_navigation frontier_explorer --ros-args -p use_sim_time:=true
 
@@ -18,6 +29,7 @@ Foxglove's service call panel), returns to idle when done or on ~/stop, and keep
 """
 import math
 import signal
+import time
 
 import rclpy
 from action_msgs.msg import GoalStatus
@@ -35,7 +47,8 @@ from tf2_ros import Buffer, TransformListener
 
 import numpy as np
 
-from intel_sys_navigation.frontiers import choose, find_frontiers, still_frontier, target_cell
+from intel_sys_navigation.frontiers import choose, find_frontiers, still_frontier, target_cell, usable
+from intel_sys_navigation.tour import PathGraph, candidates, leg_costs, pick
 
 
 class FrontierExplorer(Node):
@@ -46,6 +59,18 @@ class FrontierExplorer(Node):
         self.done_after = self.declare_parameter('empty_checks_before_done', 5).value
         self.return_home = self.declare_parameter('return_home', True).value
         self.wait_for_start = self.declare_parameter('wait_for_start', False).value
+        self.strategy = self.declare_parameter('goal_strategy', 'tour').value
+        # The L2 and the D435 face +x; the robot body blocks the rear half.
+        self.fov = math.radians(self.declare_parameter('sensor_fov_deg', 180.0).value)
+        self.gain_range = self.declare_parameter('gain_range', 5.0).value          # m
+        self.min_gain = self.declare_parameter('min_gain', 2.0).value              # m^2
+        # Seconds per metre and per radian in the tour's costs: Nav2's max_speed_xy and
+        # the Rotation Shim's rotate_to_heading_angular_vel.
+        self.speed = self.declare_parameter('tour_speed', 0.2).value               # m/s
+        self.turn_rate = self.declare_parameter('tour_turn_rate', 0.5).value       # rad/s
+        self.hysteresis = self.declare_parameter('switch_hysteresis', 0.15).value
+        self.path_cell = self.declare_parameter('path_cell', 0.15).value           # m
+        self.refusals_before_recovery = self.declare_parameter('refusals_before_recovery', 3).value
         self.map = None
         self.tf = Buffer()
         TransformListener(self.tf, self)
@@ -69,8 +94,10 @@ class FrontierExplorer(Node):
         self.home = None
         self.goal = self.target = self.goal_handle = None
         self.blacklist = []
+        self.refused = []         # goals the planner refused since its last success
         self.empty = 0
-        self.stats = {'goals': 0, 'reached': 0, 'failed': 0, 'replaced': 0, 'no_path': 0}
+        self.stats = {'goals': 0, 'reached': 0, 'failed': 0, 'replaced': 0, 'switched': 0, 'no_path': 0,
+                      'recoveries': 0}
 
     def set_state(self, state):
         self.state = state
@@ -110,11 +137,48 @@ class FrontierExplorer(Node):
         yaw = math.atan2(2 * (q.w * q.z + q.x * q.y), 1 - 2 * (q.y * q.y + q.z * q.z))
         return (t.transform.translation.x, t.transform.translation.y), yaw
 
-    def frontiers(self, robot_xy):
+    def grid(self):
         m = self.map
         grid = np.array(m.data, dtype=np.int8).reshape(m.info.height, m.info.width)
-        origin = (m.info.origin.position.x, m.info.origin.position.y)
-        return find_frontiers(grid, m.info.resolution, origin, self.min_size, robot_xy=robot_xy)
+        return grid, m.info.resolution, (m.info.origin.position.x, m.info.origin.position.y)
+
+    def plan_tour(self, fronts, grid, res, origin, xy, yaw):
+        """Next stop of the planned tour: (frontier, heading, note), 'keep' or None.
+
+        'keep' means the current goal is still the one to drive to. None means no
+        frontier is worth visiting.
+        """
+        t0 = time.monotonic()
+        fronts = [f for f in fronts if usable(f, xy, self.blacklist)]
+        cands = candidates(fronts, grid, res, origin, self.fov, self.gain_range, self.min_gain)
+        if not cands:
+            return None
+        graph = PathGraph(grid, res, origin, cell=self.path_cell)
+        dist, depart, arrive = graph.legs([xy] + [c.frontier.goal for c in cands])
+        keep = [0] + [i + 1 for i in range(len(cands)) if np.isfinite(dist[0, i + 1])]
+        if len(keep) == 1:
+            return None
+        cands = [cands[i - 1] for i in keep[1:]]
+        sub = np.ix_(keep, keep)
+        cost = leg_costs(dist[sub], depart[sub], arrive[sub], [yaw] + [c.heading for c in cands],
+                         self.speed, self.turn_rate)
+        current = None
+        if self.goal is not None:
+            current = next((i + 1 for i, c in enumerate(cands)
+                            if still_frontier([c.frontier], self.target)), None)
+        nxt, order, switched = pick(cost, current, self.hysteresis)
+        if current is not None and nxt == current:
+            return 'keep'
+        if switched:
+            self.stats['switched'] += 1
+        elif self.goal is not None and current is None:
+            self.stats['replaced'] += 1   # its frontier no longer reveals enough
+        total = sum(cost[a, b] for a, b in zip([0] + order, order))
+        c = cands[nxt - 1]
+        note = (f'gain {c.gain:.1f} m2, {cost[0, nxt]:.0f} s away; tour of {len(order)} stops, '
+                f'{total:.0f} s{" (switched)" if switched else ""}; '
+                f'planned in {1000 * (time.monotonic() - t0):.0f} ms')
+        return c.frontier, c.heading, note
 
     def pose_stamped(self, xy, yaw):
         p = PoseStamped()
@@ -138,11 +202,26 @@ class FrontierExplorer(Node):
             self.checking = False
             res = fut.result()
             if res.status == GoalStatus.STATUS_SUCCEEDED and res.result.path.poses:
+                self.refused = []
                 self.send(xy, yaw)
-            else:
-                self.stats['no_path'] += 1
+                return
+            self.stats['no_path'] += 1
+            self.refused.append(xy)
+            if len(self.refused) < self.refusals_before_recovery:
                 self.blacklist.append(xy)
                 self.get_logger().warn(f'no path to {xy[0]:.2f}, {xy[1]:.2f}; blacklisted')
+                return
+            # Several different goals refused in a row: more likely the robot can't plan
+            # from where it stands (e.g. inside an obstacle's inflation) than that all of
+            # them are unreachable. Un-blacklist them and let navigate_to_pose's recoveries
+            # (clear costmaps, spin, wait) free the robot; if that goal fails, it is
+            # blacklisted as usual.
+            self.blacklist = [b for b in self.blacklist if b not in self.refused]
+            self.refused = []
+            self.stats['recoveries'] += 1
+            self.get_logger().warn(f'planner refused {self.refusals_before_recovery} goals in a row; '
+                                   f'sending {xy[0]:.2f}, {xy[1]:.2f} to Nav2 to recover')
+            self.send(xy, yaw)
 
         def on_accepted(fut):
             h = fut.result()
@@ -178,8 +257,11 @@ class FrontierExplorer(Node):
         if self.state == 'home':
             self.get_logger().info(f'back home ({why}); exploration done: {self.stats}')
             self.end()
-        elif ok:
+        elif ok and self.goal is not None:
+            # Seen from there: don't come back to the same spot if unknown space is left
+            # that the sensors can't fill (dark or shiny surfaces, beyond the map's range).
             self.stats['reached'] += 1
+            self.blacklist.append(self.goal)
         elif self.goal is not None:
             self.stats['failed'] += 1
             self.blacklist.append(self.goal)
@@ -206,7 +288,8 @@ class FrontierExplorer(Node):
         if not self.nav.server_is_ready():
             self.get_logger().info('waiting for navigate_to_pose', throttle_duration_sec=10)
             return
-        fronts = self.frontiers(xy)
+        grid, res, origin = self.grid()
+        fronts = find_frontiers(grid, res, origin, self.min_size, robot_xy=xy)
         if self.goal is not None:
             age = (self.get_clock().now() - self.sent_at).nanoseconds * 1e-9
             if age > self.goal_timeout:
@@ -220,10 +303,22 @@ class FrontierExplorer(Node):
                 # No cancel: the next goal preempts this one in Nav2. A cancel sent just
                 # before the new goal could cancel the new goal instead (seen in the sim).
                 self.goal = self.goal_handle = None
-            else:
+            elif self.strategy != 'tour':
                 return
-        best = choose(fronts, xy, yaw, self.blacklist)
-        if best is None:
+        if self.strategy == 'tour':
+            nxt = self.plan_tour(fronts, grid, res, origin, xy, yaw)
+            if nxt == 'keep':
+                return
+            if nxt is not None and self.goal is not None:
+                # Switching goals. No cancel: the new goal preempts this one (see above).
+                self.goal = self.goal_handle = None
+        else:
+            best = choose(fronts, xy, yaw, self.blacklist)
+            nxt = None if best is None else (
+                best, math.atan2(best.goal[1] - xy[1], best.goal[0] - xy[0]), '')
+        if nxt is None and self.goal is not None:
+            return  # nothing worth switching to: keep driving to the current goal
+        if nxt is None:
             self.empty += 1
             if self.empty >= self.done_after:
                 self.get_logger().info(f'no frontiers left; {self.stats}')
@@ -234,12 +329,12 @@ class FrontierExplorer(Node):
                     self.end()
             return
         self.empty = 0
-        heading = math.atan2(best.goal[1] - xy[1], best.goal[0] - xy[0])
+        best, heading, note = nxt
         self.target = target_cell(best)
         self.stats['goals'] += 1
         self.get_logger().info(
-            f'frontier {self.stats["goals"]}: {best.size} cells, goal {best.goal[0]:.2f}, {best.goal[1]:.2f} '
-            f'({len(fronts)} frontiers)')
+            f'frontier {self.stats["goals"]}: {best.size} cells, goal {best.goal[0]:.2f}, {best.goal[1]:.2f}, '
+            f'heading {math.degrees(heading):.0f} deg ({len(fronts)} frontiers){"; " + note if note else ""}')
         self.check_then_send(best.goal, heading)
 
 

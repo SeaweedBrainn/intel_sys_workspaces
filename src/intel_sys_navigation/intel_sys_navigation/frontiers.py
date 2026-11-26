@@ -165,13 +165,17 @@ def score(f, robot_xy, robot_yaw, size_weight=0.02, turn_weight=0.5):
     return size_weight * f.size - dist - turn_weight * turn
 
 
+def usable(f, robot_xy, blacklist=(), blacklist_radius=0.5, min_distance=0.3):
+    """False for goals near a blacklisted point or under the robot."""
+    return (all(math.dist(f.goal, b) >= blacklist_radius for b in blacklist)
+            and math.dist(f.goal, robot_xy) >= min_distance)
+
+
 def choose(frontiers, robot_xy, robot_yaw, blacklist=(), blacklist_radius=0.5, min_distance=0.3):
     """Best frontier, skipping goals near a blacklisted point or under the robot."""
     best, best_score = None, -math.inf
     for f in frontiers:
-        if any(math.dist(f.goal, b) < blacklist_radius for b in blacklist):
-            continue
-        if math.dist(f.goal, robot_xy) < min_distance:
+        if not usable(f, robot_xy, blacklist, blacklist_radius, min_distance):
             continue
         s = score(f, robot_xy, robot_yaw)
         if s > best_score:

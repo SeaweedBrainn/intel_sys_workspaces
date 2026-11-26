@@ -14,6 +14,7 @@ install(PROGRAMS scripts/frontier_explorer scripts/tag_follower DESTINATION lib/
 if(BUILD_TESTING)
   find_package(ament_cmake_pytest REQUIRED)
   ament_add_pytest_test(test_frontiers test/test_frontiers.py)
+  ament_add_pytest_test(test_tour test/test_tour.py)
   ament_add_pytest_test(test_tag test/test_tag.py)
   ament_add_pytest_test(test_follow test/test_follow.py)
 endif()

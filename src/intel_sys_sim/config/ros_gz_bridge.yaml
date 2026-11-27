@@ -5,7 +5,9 @@
   gz_type_name: "ignition.msgs.Clock"
   direction: GZ_TO_ROS
 
-- ros_topic_name: "/cmd_vel"
+# The output of the priority switch (intel_sys_hardware cmd_vel_mux.launch.py, started by
+# intel_sys_bringup sim.launch.py), as on the robot.
+- ros_topic_name: "/cmd_vel_mux"
   gz_topic_name: "/cmd_vel"
   ros_type_name: "geometry_msgs/msg/Twist"
   gz_type_name: "ignition.msgs.Twist"

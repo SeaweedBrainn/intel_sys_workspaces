@@ -5,6 +5,7 @@ import rclpy
 from rclpy.node import Node
 from geometry_msgs.msg import Twist
 from sensor_msgs.msg import JointState
+from std_msgs.msg import Bool
 from intel_sys_interfaces.msg import MotorsState
 from intel_sys_hardware.mecanum import MecanumChassis, forward_sign
 
@@ -43,6 +44,10 @@ class MecanumVelocityController(Node):
         self.declare_parameter('cmd_vel_timeout', 0.5)
         # Which end is the front for /cmd_vel: True = the sensor side (see mecanum.forward_sign).
         self.declare_parameter('forward_is_sensor_side', True)
+        # std_msgs/Bool: true stops the wheels at once and ignores every command until false.
+        # twist_mux (cmd_vel_mux.launch.py) only stops forwarding on the same lock, which would
+        # leave the wheels running until the 0.5 s watchdog; this makes the stop immediate.
+        self.declare_parameter('e_stop_topic', 'e_stop')
 
         wheelbase = self.get_parameter('wheelbase').value
         track_width = self.get_parameter('track_width').value
@@ -62,6 +67,8 @@ class MecanumVelocityController(Node):
         self.motor_pub = self.create_publisher(MotorsState, motor_topic, 10)
         self.joint_state_pub = self.create_publisher(JointState, joint_state_topic, 10)
         self.create_subscription(Twist, cmd_vel_topic, self.cmd_vel_callback, 10)
+        self.e_stopped = False
+        self.create_subscription(Bool, self.get_parameter('e_stop_topic').value, self.e_stop_callback, 10)
 
         self.last_time = self.get_clock().now()
         self.last_cmd_vel_ns = None
@@ -83,7 +90,19 @@ class MecanumVelocityController(Node):
             self.motor_pub.publish(self.chassis.compute_motor_speeds(0.0, 0.0, 0.0))
             self.get_logger().warn(f'cmd_vel stale for > {self.cmd_vel_timeout:.2f}s; wheels commanded to zero.')
 
+    def e_stop_callback(self, msg: Bool):
+        if msg.data:
+            self.motor_pub.publish(self.chassis.compute_motor_speeds(0.0, 0.0, 0.0))
+            self.watchdog_tripped = True
+            if not self.e_stopped:
+                self.get_logger().warn('E-STOP: wheels stopped; commands ignored until /e_stop is false')
+        elif self.e_stopped:
+            self.get_logger().info('E-STOP released')
+        self.e_stopped = bool(msg.data)
+
     def cmd_vel_callback(self, msg: Twist):
+        if self.e_stopped:
+            return
         now = self.get_clock().now()
         dt = (now - self.last_time).nanoseconds / 1e9
         self.last_time = now

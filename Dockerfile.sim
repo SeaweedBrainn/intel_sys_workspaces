@@ -16,7 +16,7 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     ros-humble-pcl-conversions ros-humble-pcl-ros \
     ros-humble-robot-state-publisher ros-humble-joint-state-publisher ros-humble-xacro \
     ros-humble-navigation2 ros-humble-nav2-bringup ros-humble-spatio-temporal-voxel-layer \
-    ros-humble-teleop-twist-keyboard ros-humble-teleop-twist-joy ros-humble-joy \
+    ros-humble-teleop-twist-keyboard ros-humble-teleop-twist-joy ros-humble-joy ros-humble-twist-mux \
     ros-humble-cv-bridge ros-humble-image-transport \
     ros-humble-ros-gz ros-humble-pointcloud-to-laserscan \
     ros-humble-foxglove-bridge ros-humble-rviz2 ros-humble-rmw-zenoh-cpp \

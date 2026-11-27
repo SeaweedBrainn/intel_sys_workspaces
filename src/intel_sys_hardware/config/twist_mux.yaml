@@ -1,0 +1,26 @@
+# One rule for who drives (docs/ROADMAP.md, merge step 2). twist_mux forwards the
+# highest-priority input that has sent a command within its timeout to /cmd_vel_mux,
+# which mecanum_controller (robot) or the Gazebo bridge (sim) follows.
+#
+#   /cmd_vel          Nav2 (velocity smoother and recoveries), scripts, followers  priority 10
+#   /cmd_vel_teleop   a person driving (Foxglove teleop)                           priority 100
+#   /e_stop           std_msgs/Bool lock: true stops everything until false        priority 255
+#
+# A person driving overrides Nav2 for as long as they hold the stick (+0.5 s). The
+# e-stop has no timeout: it stays on until someone publishes false.
+twist_mux:
+  ros__parameters:
+    topics:
+      navigation:
+        topic: cmd_vel
+        timeout: 0.5
+        priority: 10
+      teleop:
+        topic: cmd_vel_teleop
+        timeout: 0.5
+        priority: 100
+    locks:
+      e_stop:
+        topic: e_stop
+        timeout: 0.0
+        priority: 255

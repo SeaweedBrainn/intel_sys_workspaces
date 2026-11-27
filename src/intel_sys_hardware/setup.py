@@ -13,6 +13,7 @@ setup(
         ('share/' + package_name, ['package.xml']),
         (os.path.join('share', package_name, 'launch'), glob('launch/*.launch.py')),
         (os.path.join('share', package_name, 'udev'), glob('udev/*')),
+        (os.path.join('share', package_name, 'config'), glob('config/*.yaml')),
     ],
     install_requires=['setuptools'],
     zip_safe=True,
@@ -27,6 +28,7 @@ setup(
             'mecanum_controller = intel_sys_hardware.mecanum_controller:main',
             'odom_publisher = intel_sys_hardware.odom_publisher:main',
             'robot_health = intel_sys_hardware.robot_health:main',
+            'cmd_vel_relay = intel_sys_hardware.cmd_vel_relay:main',
         ],
     },
 )

@@ -88,7 +88,11 @@
       },
       "publish": {
         "type": "pose",
-        "poseTopic": "/goal_pose"
+        "poseTopic": "/goal_pose",
+        "poseEstimateTopic": "/rtabmap/initialpose",
+        "poseEstimateXDeviation": 0.5,
+        "poseEstimateYDeviation": 0.5,
+        "poseEstimateThetaDeviation": 0.26
       }
     },
     "Image!camera": {
@@ -147,7 +151,7 @@
       "showFullMessageForDiff": false
     },
     "Teleop!drive": {
-      "topic": "/cmd_vel",
+      "topic": "/cmd_vel_teleop",
       "publishRate": 10,
       "upButton": {
         "field": "linear-x",
@@ -181,6 +185,24 @@
     "RosOut!log": {
       "searchTerms": [],
       "minLogLevel": 3
+    },
+    "Publish!estop": {
+      "topicName": "/e_stop",
+      "datatype": "std_msgs/msg/Bool",
+      "buttonText": "E-STOP",
+      "buttonTooltip": "Locks every drive input (twist_mux) until RELEASE",
+      "buttonColor": "#c62828",
+      "advancedView": false,
+      "value": "{\n  \"data\": true\n}"
+    },
+    "Publish!release": {
+      "topicName": "/e_stop",
+      "datatype": "std_msgs/msg/Bool",
+      "buttonText": "RELEASE",
+      "buttonTooltip": "Clears the e-stop lock",
+      "buttonColor": "#2e7d32",
+      "advancedView": false,
+      "value": "{\n  \"data\": false\n}"
     }
   },
   "globalVariables": {},
@@ -190,7 +212,7 @@
   },
   "layout": {
     "direction": "row",
-    "splitPercentage": 60,
+    "splitPercentage": 52,
     "first": "3D!main",
     "second": {
       "direction": "column",
@@ -201,7 +223,7 @@
         "splitPercentage": 45,
         "first": {
           "direction": "row",
-          "splitPercentage": 55,
+          "splitPercentage": 40,
           "first": "DiagnosticSummary!health",
           "second": {
             "direction": "column",
@@ -225,7 +247,17 @@
         "second": {
           "direction": "row",
           "splitPercentage": 40,
-          "first": "Teleop!drive",
+          "first": {
+            "direction": "column",
+            "splitPercentage": 25,
+            "first": {
+              "direction": "row",
+              "splitPercentage": 60,
+              "first": "Publish!estop",
+              "second": "Publish!release"
+            },
+            "second": "Teleop!drive"
+          },
           "second": {
             "direction": "column",
             "first": "Plot!battery",

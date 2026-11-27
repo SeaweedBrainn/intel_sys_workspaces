@@ -1,6 +1,8 @@
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument
-from launch.substitutions import LaunchConfiguration
+from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription
+from launch.launch_description_sources import PythonLaunchDescriptionSource
+from launch.substitutions import LaunchConfiguration, PathJoinSubstitution
+from launch_ros.substitutions import FindPackageShare
 from launch_ros.actions import Node
 from launch_ros.parameter_descriptions import ParameterValue
 
@@ -32,10 +34,10 @@ def generate_launch_description():
         name='mecanum_velocity_controller',
         output='screen',
         parameters=[{
-            'cmd_vel_topic': 'cmd_vel',
+            'cmd_vel_topic': 'cmd_vel_mux',  # after the priority switch (cmd_vel_mux.launch.py)
             'motor_topic': 'set_motor',
             'forward_is_sensor_side': ParameterValue(LaunchConfiguration('forward_is_sensor_side'), value_type=bool),
-            # The last speed limit for every /cmd_vel source (Nav2, Foxglove teleop, followers),
+            # The last speed limit for every source (Nav2, Foxglove teleop, followers),
             # now that the dashboard's own caps are gone. Nav2 runs at 0.2 m/s and 0.6 rad/s.
             'max_linear_x': 0.3,
             'max_linear_y': 0.3,
@@ -51,11 +53,15 @@ def generate_launch_description():
         parameters=[{
             'odom_topic': '/odom/wheel',
             'motor_topic': 'set_motor',
-            'cmd_vel_topic': 'cmd_vel',
+            'cmd_vel_topic': 'cmd_vel_mux',  # after the priority switch (cmd_vel_mux.launch.py)
             'publish_tf': False,
             'forward_is_sensor_side': ParameterValue(LaunchConfiguration('forward_is_sensor_side'), value_type=bool),
         }]
     )
+
+    # Nav2 on /cmd_vel, a person on /cmd_vel_teleop, the /e_stop lock -> /cmd_vel_mux.
+    cmd_vel_mux = IncludeLaunchDescription(PythonLaunchDescriptionSource(
+        PathJoinSubstitution([FindPackageShare('intel_sys_hardware'), 'launch', 'cmd_vel_mux.launch.py'])))
 
     return LaunchDescription([
         port_arg,
@@ -63,6 +69,7 @@ def generate_launch_description():
         imu_frame_arg,
         front_arg,
         stm32_bridge_node,
+        cmd_vel_mux,
         mecanum_controller_node,
         odom_publisher_node
     ])

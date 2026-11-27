@@ -11,6 +11,7 @@ def generate_launch_description():
     sim_pkg = FindPackageShare('intel_sys_sim')
     loc_pkg = FindPackageShare('intel_sys_localization')
     nav_pkg = FindPackageShare('intel_sys_navigation')
+    hw_pkg = FindPackageShare('intel_sys_hardware')
 
     # Declare arguments
     headless_arg = DeclareLaunchArgument('headless', default_value='false', description='Run Gazebo without GUI')
@@ -26,6 +27,12 @@ def generate_launch_description():
     slam_arg = DeclareLaunchArgument('slam', default_value='true', description='Run RTAB-Map and plan on its /map')
     slam_camera_arg = DeclareLaunchArgument('slam_camera', default_value='false',
                                             description='RTAB-Map also uses the simulated D435 (visual loop closures)')
+
+    # Who drives, as on the robot: Nav2 on /cmd_vel, a person on /cmd_vel_teleop, the
+    # /e_stop lock; the Gazebo bridge follows /cmd_vel_mux.
+    cmd_vel_mux = IncludeLaunchDescription(
+        PythonLaunchDescriptionSource(PathJoinSubstitution([hw_pkg, 'launch', 'cmd_vel_mux.launch.py'])),
+        launch_arguments={'use_sim_time': 'true'}.items())
 
     # 1. Simulation Bridge / World (Spawns robot, Gazebo plugins, sensor bridges)
     sim_launch = IncludeLaunchDescription(
@@ -92,6 +99,7 @@ def generate_launch_description():
         slam_localization_arg,
         database_path_arg,
         sim_launch,
+        cmd_vel_mux,
         localization_launch,
         navigation_launch,
         foxglove_bridge_node

@@ -50,6 +50,8 @@ import numpy as np
 from intel_sys_navigation.frontiers import choose, find_frontiers, still_frontier, target_cell, usable
 from intel_sys_navigation.tour import PathGraph, candidates, leg_costs, pick
 
+SAME_GOAL = 0.3   # m: goals closer than this are the same goal
+
 
 class FrontierExplorer(Node):
     def __init__(self):
@@ -164,11 +166,17 @@ class FrontierExplorer(Node):
                          self.speed, self.turn_rate)
         current = None
         if self.goal is not None:
+            # Two clusters can share a goal point (the nearest clear cell to each), so
+            # match the goal itself first, then the frontier cell being watched.
             current = next((i + 1 for i, c in enumerate(cands)
-                            if still_frontier([c.frontier], self.target)), None)
+                            if math.dist(c.frontier.goal, self.goal) < SAME_GOAL), None)
+            if current is None:
+                current = next((i + 1 for i, c in enumerate(cands)
+                                if still_frontier([c.frontier], self.target)), None)
         nxt, order, switched = pick(cost, current, self.hysteresis)
-        if current is not None and nxt == current:
-            return 'keep'
+        if self.goal is not None and (nxt == current or
+                                      math.dist(cands[nxt - 1].frontier.goal, self.goal) < SAME_GOAL):
+            return 'keep'   # resending the same goal would restart Nav2 for nothing
         if switched:
             self.stats['switched'] += 1
         elif self.goal is not None and current is None:

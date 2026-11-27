@@ -78,6 +78,8 @@ services:
       - ./:/workspaces/intel_sys:ro
       - ${ROBOT_DATA_DIR:-./data}:/data
     # SLAM_LOCALIZATION=true re-localizes on the saved map instead of mapping (and keeps it).
+    # SLAM_CONTINUE=true keeps mapping into the saved map (a new session that joins it once
+    # RTAB-Map recognizes a place; needs the camera). Default: a fresh map each start.
     # SLAM_CAMERA=false runs RTAB-Map on the LiDAR alone. With the camera on (default),
     # RTAB-Map waits for camera frames, so it stops updating if the camera stops.
     # SLAM=false runs Point-LIO alone (odom only, no map): used for tag following.
@@ -85,6 +87,7 @@ services:
       ros2 launch intel_sys_localization localization.launch.py
       slam:=${SLAM:-true} database_path:=/data/rtabmap.db
       slam_localization:=${SLAM_LOCALIZATION:-false}
+      slam_continue:=${SLAM_CONTINUE:-false}
       slam_camera:=${SLAM_CAMERA:-true}
     profiles: [localization, navigation, follow]
     restart: "no"

@@ -18,15 +18,15 @@ def slam_overlay(params):
     """
     gc = params['global_costmap']['global_costmap']['ros__parameters']
     gc['global_frame'] = 'map'
-    # Sized from /map and growing with it, not a rolling window: a 30 m window
-    # centred on the robot could not reach the explorer's home from the far end
-    # of a 22 m building (office.sdf, 2026-11-26), so the trip home never planned.
-    # The cost: goals beyond the edge of the mapped area are off the costmap and
-    # don't plan (unknown cells inside it do, allow_unknown). The explorer only
-    # sends goals in known space; tag following runs in odom without this overlay.
-    gc['rolling_window'] = False
-    for key in ('width', 'height'):
-        gc.pop(key, None)
+    # A rolling window around the robot, so goals in unmapped space still plan (the
+    # rover's main job: drive to a waypoint far beyond the map). 30 m at 5 cm was too
+    # small: from the far end of the 22 m office.sdf the explorer's home was off it and
+    # the trip home never planned (sim, 2026-11-26). 60 m at 10 cm has the same number
+    # of cells; the global plan only needs coarse cells, the local costmap (5 cm) drives.
+    # Outdoors (URC) this wants to grow again, e.g. 200 m at 25 cm.
+    gc['rolling_window'] = True
+    gc['width'] = gc['height'] = 60
+    gc['resolution'] = 0.10
     gc['plugins'] = ['static_layer', 'stvl_layer', 'inflation_layer']
     gc['static_layer'] = {
         'plugin': 'nav2_costmap_2d::StaticLayer',

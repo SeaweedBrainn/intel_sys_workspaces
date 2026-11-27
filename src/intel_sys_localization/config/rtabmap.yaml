@@ -10,6 +10,17 @@
   ros__parameters:
     frame_id: base_footprint
     odom_frame_id: odom          # odometry from TF (Point-LIO), no odom topic
+    # Uncertainty of each odometry link between graph nodes (RTAB-Map's default is 0.001,
+    # i.e. 3 cm and 1.8 deg per node, far looser than Point-LIO). RGBD/OptimizeMaxError
+    # rejects a loop closure when absorbing it bends some link by more than 3 standard
+    # deviations, so a loose model lets a false closure through: in office.sdf a visual
+    # match between two look-alike rooms 10 m apart was spread over 70 nodes (2.6 deg
+    # each) and turned the map 180 deg (sim, 2026-11-26). With 1e-4 (1 cm, 0.57 deg per
+    # node) that is 4.5 sigma and rejected, while real drift (12 deg over a 19 m loop,
+    # about 0.13 deg per node) stays well inside. Scales with distance, so it holds for
+    # long traverses and for a new session joining a saved map.
+    odom_tf_linear_variance: 0.0001
+    odom_tf_angular_variance: 0.0001
     map_frame_id: map
     publish_tf: true
     subscribe_depth: false

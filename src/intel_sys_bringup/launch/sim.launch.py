@@ -23,6 +23,8 @@ def generate_launch_description():
     yaw_arg = DeclareLaunchArgument('yaw', default_value='0.0', description='Spawn Yaw orientation')
     world_arg = DeclareLaunchArgument('world', default_value='default.sdf', description='World file in intel_sys_sim/worlds (e.g. loop.sdf)')
     slam_localization_arg = DeclareLaunchArgument('slam_localization', default_value='false', description='Localize on a saved RTAB-Map database instead of mapping')
+    slam_continue_arg = DeclareLaunchArgument('slam_continue', default_value='false',
+                                              description='Keep mapping into the saved RTAB-Map database (new session)')
     database_path_arg = DeclareLaunchArgument('database_path', default_value='~/.ros/rtabmap.db', description='RTAB-Map database')
     slam_arg = DeclareLaunchArgument('slam', default_value='true', description='Run RTAB-Map and plan on its /map')
     slam_camera_arg = DeclareLaunchArgument('slam_camera', default_value='false',
@@ -56,6 +58,7 @@ def generate_launch_description():
             'lidar_type': '5',
             'slam': LaunchConfiguration('slam'),
             'slam_localization': LaunchConfiguration('slam_localization'),
+            'slam_continue': LaunchConfiguration('slam_continue'),
             'slam_camera': LaunchConfiguration('slam_camera'),
             'database_path': LaunchConfiguration('database_path'),
         }.items()
@@ -97,6 +100,7 @@ def generate_launch_description():
         slam_arg,
         slam_camera_arg,
         slam_localization_arg,
+        slam_continue_arg,
         database_path_arg,
         sim_launch,
         cmd_vel_mux,

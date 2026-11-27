@@ -23,6 +23,11 @@ def generate_launch_description():
     slam_localization_arg = DeclareLaunchArgument(
         'slam_localization', default_value='false',
         description='RTAB-Map localizes on the saved database instead of mapping (keeps it)')
+    slam_continue_arg = DeclareLaunchArgument(
+        'slam_continue', default_value='false',
+        description='Keep mapping into the saved database instead of wiping it: a new session that joins '
+                    'the old map once RTAB-Map recognizes a place (needs the camera; LiDAR alone cannot '
+                    'recognize places globally)')
     database_path_arg = DeclareLaunchArgument(
         'database_path', default_value='~/.ros/rtabmap.db', description='RTAB-Map database')
 
@@ -95,8 +100,9 @@ def generate_launch_description():
         launch_arguments={
             'use_sim_time': use_sim_time,
             'localization': LaunchConfiguration('slam_localization'),
-            # mapping starts a fresh database; localization must keep it
-            'new_map': PythonExpression(["'false' if '", LaunchConfiguration('slam_localization'), "' == 'true' else 'true'"]),
+            # Mapping starts a fresh database unless slam_continue; localization keeps it.
+            'new_map': PythonExpression(["'false' if '", LaunchConfiguration('slam_localization'), "' == 'true' or '",
+                                         LaunchConfiguration('slam_continue'), "' == 'true' else 'true'"]),
             'database_path': LaunchConfiguration('database_path'),
             'camera': LaunchConfiguration('slam_camera'),
         }.items(),
@@ -110,6 +116,7 @@ def generate_launch_description():
         slam_arg,
         slam_camera_arg,
         slam_localization_arg,
+        slam_continue_arg,
         database_path_arg,
         lidar_body_filter_node,
         point_lio_node,

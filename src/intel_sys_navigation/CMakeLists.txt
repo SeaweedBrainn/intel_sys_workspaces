@@ -17,6 +17,7 @@ if(BUILD_TESTING)
   ament_add_pytest_test(test_tour test/test_tour.py)
   ament_add_pytest_test(test_tag test/test_tag.py)
   ament_add_pytest_test(test_follow test/test_follow.py)
+  ament_add_pytest_test(test_config test/test_config.py)
 endif()
 
 install(

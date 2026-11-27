@@ -99,7 +99,7 @@ scripts/robot.sh up navigation
 - [ ] **STVL clearing:** walk past in front of the robot; your trail in the costmap clears within about a second once you've gone.
 - [ ] **The box:** put the box in the robot's path and send a goal behind it (the 2026-11-23 oscillation case). It goes round without switching sides.
 - [ ] **Gaps:** two boxes 0.8 m apart, goal on the far side: it goes through.
-- [ ] A goal 15–25 m away plans and is reached, including one into space not mapped yet (the global costmap is now a 60 m window at 10 cm, was 30 m at 5 cm). Check the 0.8 m gap above still plans with the coarser cells.
+- [ ] A goal 15–25 m away plans and is reached, including one into space not mapped yet (the global costmap is now a 60 m window at 5 cm, was 30 m). Watch planner and explorer CPU: 4x the cells of 30 m; the explorer's planning took a median 120 ms in the sim.
 
 ## 6. Frontier exploration (30 minutes, someone at the physical stop)
 

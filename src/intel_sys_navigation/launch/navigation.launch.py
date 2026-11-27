@@ -21,12 +21,15 @@ def slam_overlay(params):
     # A rolling window around the robot, so goals in unmapped space still plan (the
     # rover's main job: drive to a waypoint far beyond the map). 30 m at 5 cm was too
     # small: from the far end of the 22 m office.sdf the explorer's home was off it and
-    # the trip home never planned (sim, 2026-11-26). 60 m at 10 cm has the same number
-    # of cells; the global plan only needs coarse cells, the local costmap (5 cm) drives.
-    # Outdoors (URC) this wants to grow again, e.g. 200 m at 25 cm.
+    # the trip home never planned (sim, 2026-11-26), so 60 m.
+    # The resolution must equal RTAB-Map's Grid/CellSize (test_config.py checks it). In a
+    # rolling window the static layer reads one /map cell per costmap cell, so a coarser
+    # costmap drops walls one map cell thick: at 10 cm about half of them were missing,
+    # and the explorer put goals inside walls (loop.sdf, 2026-11-26).
+    # Outdoors (URC) both grow together, e.g. 200 m with 25 cm cells.
     gc['rolling_window'] = True
     gc['width'] = gc['height'] = 60
-    gc['resolution'] = 0.10
+    gc['resolution'] = 0.05
     gc['plugins'] = ['static_layer', 'stvl_layer', 'inflation_layer']
     gc['static_layer'] = {
         'plugin': 'nav2_costmap_2d::StaticLayer',

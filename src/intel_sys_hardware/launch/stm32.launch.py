@@ -37,8 +37,8 @@ def generate_launch_description():
             'cmd_vel_topic': 'cmd_vel_mux',  # after the priority switch (cmd_vel_mux.launch.py)
             'motor_topic': 'set_motor',
             'forward_is_sensor_side': ParameterValue(LaunchConfiguration('forward_is_sensor_side'), value_type=bool),
-            # The last speed limit for every source (Nav2, Foxglove teleop, followers),
-            # now that the dashboard's own caps are gone. Nav2 runs at 0.2 m/s and 0.6 rad/s.
+            # The last speed limit for every source (Nav2, Foxglove teleop, followers).
+            # Nav2 runs at 0.2 m/s and 0.6 rad/s.
             'max_linear_x': 0.3,
             'max_linear_y': 0.3,
             'max_angular_z': 1.0,

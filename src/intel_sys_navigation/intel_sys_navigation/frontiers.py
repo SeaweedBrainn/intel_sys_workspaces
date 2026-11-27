@@ -89,7 +89,3 @@ def still_frontier(chunks, point, radius=0.4):
     """
     p = np.asarray(point)
     return any(len(c.cells) and np.min(np.hypot(*(c.cells - p).T)) < radius for c in chunks)
-
-
-def wrap(a):
-    return math.atan2(math.sin(a), math.cos(a))

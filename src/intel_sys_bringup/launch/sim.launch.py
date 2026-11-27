@@ -55,7 +55,6 @@ def generate_launch_description():
         PythonLaunchDescriptionSource(PathJoinSubstitution([loc_pkg, 'launch', 'localization.launch.py'])),
         launch_arguments={
             'use_sim_time': 'true',
-            'lidar_type': '5',
             'slam': LaunchConfiguration('slam'),
             'slam_localization': LaunchConfiguration('slam_localization'),
             'slam_continue': LaunchConfiguration('slam_continue'),

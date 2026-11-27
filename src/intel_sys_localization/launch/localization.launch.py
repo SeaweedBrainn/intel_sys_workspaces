@@ -13,7 +13,6 @@ def generate_launch_description():
 
     # Declare arguments
     use_sim_time_arg = DeclareLaunchArgument('use_sim_time', default_value='false', description='Use simulation clock')
-    lidar_type_arg = DeclareLaunchArgument('lidar_type', default_value='5', description='Point-LIO LiDAR Type (2: VELO16, 5: UNILIDAR)')
 
     point_lio_params_arg = DeclareLaunchArgument(
         'point_lio_params', default_value=default_point_lio_params, description='Point-LIO parameters YAML')
@@ -32,7 +31,6 @@ def generate_launch_description():
         'database_path', default_value='~/.ros/rtabmap.db', description='RTAB-Map database')
 
     use_sim_time = LaunchConfiguration('use_sim_time')
-    lidar_type = LaunchConfiguration('lidar_type')
 
     # 0. LiDAR Body Filter Node (crops points inside robot bounding box for both Sim and Real)
     lidar_body_filter_node = Node(
@@ -63,7 +61,6 @@ def generate_launch_description():
             LaunchConfiguration('point_lio_params'),
             {
                 'use_sim_time': use_sim_time,
-                'preprocess.lidar_type': lidar_type
             }
         ],
         remappings=[
@@ -89,8 +86,6 @@ def generate_launch_description():
             'odom_topic': '/odom',
             'raw_cloud_topic': '/point_lio/raw_cloud_registered',
             'cloud_topic': '/point_lio/cloud_registered',
-            'raw_path_topic': '/point_lio/raw_path',
-            'path_topic': '/point_lio/path',
         }]
     )
 
@@ -111,7 +106,6 @@ def generate_launch_description():
 
     return LaunchDescription([
         use_sim_time_arg,
-        lidar_type_arg,
         point_lio_params_arg,
         slam_arg,
         slam_camera_arg,

@@ -8,7 +8,7 @@ def forward_sign(forward_is_sensor_side):
 
     The rover's sensors (L2 and D435) sit on what the motor convention calls the back.
     With forward_is_sensor_side, +x in /cmd_vel and in wheel odometry is the sensor side,
-    so teleop, the dashboard, Nav2 and the URDF all agree on one front. Flipping linear x
+    so teleop, Nav2 and the URDF all agree on one front. Flipping linear x
     and y is a 180 deg turn about z; yaw rate is unchanged.
     """
     return -1.0 if forward_is_sensor_side else 1.0

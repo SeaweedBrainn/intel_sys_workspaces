@@ -21,20 +21,16 @@ jobs:
       - name: Install test dependencies
         run: |
           apt-get update
-          apt-get install -y --no-install-recommends python3-pytest python3-numpy python3-serial
+          apt-get install -y --no-install-recommends python3-pytest python3-numpy python3-serial \
+            python3-scipy python3-opencv python3-yaml
 
       - name: Build
         run: |
           source /opt/ros/humble/setup.bash
-          colcon build --packages-up-to intel_sys_hardware intel_sys_localization
+          colcon build --packages-up-to intel_sys_hardware intel_sys_localization intel_sys_navigation
 
       - name: Package tests
         run: |
           source install/setup.bash
-          colcon test --packages-select intel_sys_hardware intel_sys_localization --event-handlers console_direct+
+          colcon test --packages-select intel_sys_hardware intel_sys_localization intel_sys_navigation --event-handlers console_direct+
           colcon test-result --verbose
-
-      - name: Script tests
-        run: |
-          source install/setup.bash
-          python3 -m pytest -q scripts/autonomy scripts/dashboard

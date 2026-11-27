@@ -1,8 +1,8 @@
-"""RealSense D435i driver: color, depth aligned to color, and a depth cloud for Nav2.
+"""RealSense D435i driver: color and depth aligned to color.
 
 Topics match what RTAB-Map (slam.launch.py) and the sim expect:
-    /camera/image_raw, /camera/depth/image_raw (aligned to color), /camera/camera_info,
-    /camera/depth/color/points (Nav2 STVL).
+    /camera/image_raw, /camera/depth/image_raw (aligned to color), /camera/camera_info.
+The depth cloud (/camera/depth/color/points) is off by default (enable_pointcloud).
 
 The robot description publishes the camera frames (camera_link and its optical
 frames), so the driver's own TF is off. The IMU and infrared streams stay off.

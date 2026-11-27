@@ -1,44 +1,3 @@
-amcl:
-  ros__parameters:
-    use_sim_time: false
-    alpha1: 0.2
-    alpha2: 0.2
-    alpha3: 0.2
-    alpha4: 0.2
-    alpha5: 0.2
-    base_frame_id: "base_footprint"
-    beam_skip_distance: 0.5
-    beam_skip_error_threshold: 0.9
-    beam_skip_threshold: 0.3
-    do_beamskip: false
-    global_frame_id: "map"
-    lambda_short: 0.1
-    laser_likelihood_max_dist: 2.0
-    laser_max_range: 25.0
-    laser_min_range: -1.0
-    laser_model_type: "likelihood_field"
-    max_beams: 60
-    max_particles: 2000
-    min_particles: 500
-    odom_frame_id: "odom"
-    pf_err: 0.05
-    pf_z: 0.99
-    recovery_alpha_fast: 0.0
-    recovery_alpha_slow: 0.0
-    resample_interval: 1
-    robot_model_type: "nav2_amcl::OmniMotionModel"
-    save_pose_rate: 0.5
-    sigma_hit: 0.2
-    tf_broadcast: true
-    transform_tolerance: 1.0
-    update_min_a: 0.2
-    update_min_d: 0.25
-    z_hit: 0.5
-    z_max: 0.05
-    z_rand: 0.5
-    z_short: 0.05
-    scan_topic: scan
-
 bt_navigator:
   ros__parameters:
     use_sim_time: false
@@ -216,8 +175,7 @@ local_costmap:
         map_save_duration: 60.0
         # LiDAR only. The D435's full cloud (about 50 MB/s) starved the LiDAR subscription
         # under Zenoh on the robot (2026-11-24): the costmaps stopped receiving /lidar/points
-        # and Nav2 refused to move. The camera source below stays defined for a lighter,
-        # downsampled cloud later; add it back here then.
+        # and Nav2 refused to move. A lighter, downsampled camera cloud may be added later.
         observation_sources: pointcloud
         pointcloud:
           data_type: PointCloud2
@@ -244,26 +202,6 @@ local_costmap:
           horizontal_fov_angle: 6.28
           decay_acceleration: 5.0
           model_type: 1
-        camera:
-          data_type: PointCloud2
-          topic: /camera/depth/color/points
-          marking: true
-          clearing: true
-          obstacle_range: 4.0
-          min_obstacle_height: 0.05
-          max_obstacle_height: 1.8
-          expected_update_rate: 0.0
-          observation_persistence: 0.0
-          inf_is_valid: false
-          filter: "voxel"
-          voxel_min_points: 0
-          clear_after_reading: true
-          max_z: 4.0
-          min_z: 0.1
-          vertical_fov_angle: 1.0
-          horizontal_fov_angle: 1.5
-          decay_acceleration: 1.0
-          model_type: 0
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
         # 0.45 m with a slow fall-off (3.0) made every gap under ~1 m look expensive, so
@@ -306,8 +244,7 @@ global_costmap:
         map_save_duration: 60.0
         # LiDAR only. The D435's full cloud (about 50 MB/s) starved the LiDAR subscription
         # under Zenoh on the robot (2026-11-24): the costmaps stopped receiving /lidar/points
-        # and Nav2 refused to move. The camera source below stays defined for a lighter,
-        # downsampled cloud later; add it back here then.
+        # and Nav2 refused to move. A lighter, downsampled camera cloud may be added later.
         observation_sources: pointcloud
         pointcloud:
           data_type: PointCloud2
@@ -334,26 +271,6 @@ global_costmap:
           horizontal_fov_angle: 6.28
           decay_acceleration: 5.0
           model_type: 1
-        camera:
-          data_type: PointCloud2
-          topic: /camera/depth/color/points
-          marking: true
-          clearing: true
-          obstacle_range: 4.0
-          min_obstacle_height: 0.05
-          max_obstacle_height: 1.8
-          expected_update_rate: 0.0
-          observation_persistence: 0.0
-          inf_is_valid: false
-          filter: "voxel"
-          voxel_min_points: 0
-          clear_after_reading: true
-          max_z: 4.0
-          min_z: 0.1
-          vertical_fov_angle: 1.0
-          horizontal_fov_angle: 1.5
-          decay_acceleration: 1.0
-          model_type: 0
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
         # Global (planner) only: wider than the local costmap's, so paths keep about
@@ -415,7 +332,3 @@ velocity_smoother:
     odom_duration: 0.1
     deadband_velocity: [0.0, 0.0, 0.0]
     velocity_timeout: 1.0
-
-robot_state_publisher:
-  ros__parameters:
-    use_sim_time: false

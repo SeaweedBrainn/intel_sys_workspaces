@@ -13,7 +13,7 @@ import time
 import rclpy
 from diagnostic_msgs.msg import DiagnosticArray, DiagnosticStatus, KeyValue
 from rclpy.node import Node
-from rclpy.qos import QoSDurabilityPolicy, QoSProfile, QoSReliabilityPolicy
+from rclpy.qos import QoSProfile, QoSReliabilityPolicy
 from rclpy.time import Time
 from rosidl_runtime_py.utilities import get_message
 from tf2_ros import Buffer, TransformListener
@@ -43,9 +43,6 @@ class RobotHealth(Node):
                 self.checks.remove(c)
                 continue
             qos = QoSProfile(depth=5, reliability=QoSReliabilityPolicy.BEST_EFFORT)
-            if c.msg_type == 'nav_msgs/msg/OccupancyGrid':  # latched by RTAB-Map
-                qos = QoSProfile(depth=1, reliability=QoSReliabilityPolicy.RELIABLE,
-                                 durability=QoSDurabilityPolicy.TRANSIENT_LOCAL)
             self.create_subscription(msg_class, c.topic,
                                      lambda _m, c=c: c.mark(time.monotonic()), qos)
         self.tf = Buffer()

@@ -1,9 +1,10 @@
-# RTAB-Map, LiDAR-only (Phase 6 in docs/ROADMAP.md).
+# RTAB-Map. Point-LIO owns odom -> base_footprint; RTAB-Map reads it from TF and owns
+# map -> odom.
 #
-# Point-LIO owns odom -> base_footprint; RTAB-Map reads it from TF and owns
-# map -> odom. No camera yet: loop closures come from proximity detection on the
-# point clouds (RGBD/ProximityBySpace), not from visual words. Phase 8 adds the
-# D435 as RGB-D by subscribing to it here.
+# This file is the LiDAR-only setup: loop closures come from proximity detection on
+# the point clouds (RGBD/ProximityBySpace), not from visual words. With the camera
+# (slam_camera, the default on the robot) slam.launch.py adds the D435 as RGB-D and
+# turns on visual words for loop closures and relocalization.
 #
 # RTAB-Map's own parameters are strings, even when numeric.
 /**:

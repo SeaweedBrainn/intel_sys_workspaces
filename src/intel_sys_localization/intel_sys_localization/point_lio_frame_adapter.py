@@ -5,7 +5,7 @@ from rclpy.qos import QoSProfile, ReliabilityPolicy, DurabilityPolicy
 from rclpy.time import Time
 from rclpy.executors import MultiThreadedExecutor
 from rclpy.callback_groups import ReentrantCallbackGroup
-from nav_msgs.msg import Odometry, Path
+from nav_msgs.msg import Odometry
 from sensor_msgs.msg import PointCloud2, PointField
 from geometry_msgs.msg import TransformStamped
 import tf2_ros
@@ -62,18 +62,6 @@ def rot_matrix_to_quat(R):
         qz = 0.25 * S
     q = np.array([qx, qy, qz, qw])
     return q / np.linalg.norm(q)
-
-
-def quat_multiply(q1, q2):
-    """Multiplies two quaternions [x, y, z, w]."""
-    x1, y1, z1, w1 = q1
-    x2, y2, z2, w2 = q2
-    return np.array([
-        w1 * x2 + x1 * w2 + y1 * z2 - z1 * y2,
-        w1 * y2 - x1 * z2 + y1 * w2 + z1 * x2,
-        w1 * z2 + x1 * y2 - y1 * x2 + z1 * w2,
-        w1 * w2 - x1 * x2 - y1 * y2 - z1 * z2
-    ])
 
 
 def yaw_of(R):
@@ -147,8 +135,6 @@ class PointLioFrameAdapter(Node):
         self.declare_parameter('odom_topic', '/odom')
         self.declare_parameter('raw_cloud_topic', '/point_lio/raw_cloud_registered')
         self.declare_parameter('cloud_topic', '/point_lio/cloud_registered')
-        self.declare_parameter('raw_path_topic', '/point_lio/raw_path')
-        self.declare_parameter('path_topic', '/point_lio/path')
 
         self.odom_frame = self.get_parameter('odom_frame').get_parameter_value().string_value
         self.base_frame = self.get_parameter('base_frame').get_parameter_value().string_value
@@ -157,10 +143,8 @@ class PointLioFrameAdapter(Node):
         self.planar = self.get_parameter('planar').get_parameter_value().bool_value
         raw_odom_topic = self.get_parameter('raw_odom_topic').get_parameter_value().string_value
         odom_topic = self.get_parameter('odom_topic').get_parameter_value().string_value
-        raw_cloud_topic = self.get_parameter('raw_cloud_topic').get_parameter_value().string_value
+        self.raw_cloud_topic = self.get_parameter('raw_cloud_topic').get_parameter_value().string_value
         cloud_topic = self.get_parameter('cloud_topic').get_parameter_value().string_value
-        raw_path_topic = self.get_parameter('raw_path_topic').get_parameter_value().string_value
-        path_topic = self.get_parameter('path_topic').get_parameter_value().string_value
 
         # TF2 listener & broadcasters
         self.tf_buffer = tf2_ros.Buffer()
@@ -182,9 +166,9 @@ class PointLioFrameAdapter(Node):
         self.tf_timer = self.create_timer(0.2, self.lookup_mount_transform)
 
         # QoS Profiles
-        sensor_qos = QoSProfile(depth=10)
-        sensor_qos.reliability = ReliabilityPolicy.BEST_EFFORT
-        sensor_qos.durability = DurabilityPolicy.VOLATILE
+        self.sensor_qos = QoSProfile(depth=10)
+        self.sensor_qos.reliability = ReliabilityPolicy.BEST_EFFORT
+        self.sensor_qos.durability = DurabilityPolicy.VOLATILE
 
         reliable_qos = QoSProfile(depth=10)
         reliable_qos.reliability = ReliabilityPolicy.RELIABLE
@@ -193,17 +177,17 @@ class PointLioFrameAdapter(Node):
         # Publishers
         self.odom_pub = self.create_publisher(Odometry, odom_topic, reliable_qos)
         self.cloud_pub = self.create_publisher(PointCloud2, cloud_topic, reliable_qos)
-        self.cloud_alias_pub = self.create_publisher(PointCloud2, '/cloud_registered', reliable_qos)
-        self.path_pub = self.create_publisher(Path, path_topic, reliable_qos)
-        self.path_alias_pub = self.create_publisher(Path, '/path', reliable_qos)
 
         # Subscriptions. Odom (high rate) and cloud (heavy transform) run in a reentrant
         # group so a slow cloud callback does not stall the 250 Hz odom/TF path.
         # The executor is MultiThreadedExecutor in main().
-        concurrent_cb_group = ReentrantCallbackGroup()
-        self.odom_sub = self.create_subscription(Odometry, raw_odom_topic, self.odom_callback, reliable_qos, callback_group=concurrent_cb_group)
-        self.cloud_sub = self.create_subscription(PointCloud2, raw_cloud_topic, self.cloud_callback, sensor_qos, callback_group=concurrent_cb_group)
-        self.path_sub = self.create_subscription(Path, raw_path_topic, self.path_callback, reliable_qos)
+        self.concurrent_cb_group = ReentrantCallbackGroup()
+        self.odom_sub = self.create_subscription(Odometry, raw_odom_topic, self.odom_callback, reliable_qos, callback_group=self.concurrent_cb_group)
+        # The registered cloud is reprojected in Python, about a core's worth on the Jetson
+        # at full rate, and nothing in the stack needs it (it's for viewing, e.g. in
+        # Foxglove). So it is only taken while something subscribes to the output.
+        self.cloud_sub = None
+        self.create_timer(1.0, self.update_cloud_relay)
 
         self.get_logger().info(
             f'Point-LIO Frame Adapter active: Direct Odometry & TF publisher [{self.odom_frame} -> {self.base_frame}]'
@@ -318,6 +302,15 @@ class PointLioFrameAdapter(Node):
             f'Direct TF mode active: [{self.odom_frame} -> {self.base_frame}]'
         )
 
+    def update_cloud_relay(self):
+        wanted = self.cloud_pub.get_subscription_count() > 0
+        if wanted and self.cloud_sub is None:
+            self.cloud_sub = self.create_subscription(PointCloud2, self.raw_cloud_topic, self.cloud_callback,
+                                                      self.sensor_qos, callback_group=self.concurrent_cb_group)
+        elif not wanted and self.cloud_sub is not None:
+            self.destroy_subscription(self.cloud_sub)
+            self.cloud_sub = None
+
     def cloud_callback(self, msg: PointCloud2):
         # Clouds are in camera_init; drop them until odom is anchored.
         if self.anchor_R is None:
@@ -351,36 +344,6 @@ class PointLioFrameAdapter(Node):
 
         msg.header.frame_id = self.odom_frame
         self.cloud_pub.publish(msg)
-        self.cloud_alias_pub.publish(msg)
-
-    def path_callback(self, msg: Path):
-        # Path poses are LiDAR poses in camera_init; drop until odom is anchored.
-        if self.anchor_R is None:
-            return
-        anchor_Q = rot_matrix_to_quat(self.anchor_R)
-        msg.header.frame_id = self.odom_frame
-        for pose in msg.poses:
-            pose.header.frame_id = self.odom_frame
-            p = np.array([pose.pose.position.x, pose.pose.position.y, pose.pose.position.z])
-            p_trans = self.anchor_R @ p + self.anchor_T
-            pose.pose.position.x = float(p_trans[0])
-            pose.pose.position.y = float(p_trans[1])
-            pose.pose.position.z = float(p_trans[2])
-
-            q_orig = np.array([
-                pose.pose.orientation.x,
-                pose.pose.orientation.y,
-                pose.pose.orientation.z,
-                pose.pose.orientation.w
-            ])
-            q_trans = quat_multiply(anchor_Q, q_orig)
-            pose.pose.orientation.x = float(q_trans[0])
-            pose.pose.orientation.y = float(q_trans[1])
-            pose.pose.orientation.z = float(q_trans[2])
-            pose.pose.orientation.w = float(q_trans[3])
-
-        self.path_pub.publish(msg)
-        self.path_alias_pub.publish(msg)
 
 
 def main(args=None):

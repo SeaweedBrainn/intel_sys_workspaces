@@ -17,7 +17,7 @@ class Check:
     msg_type: str            # e.g. sensor_msgs/msg/Imu
     min_hz: float            # below this rate: WARN
     stale_s: float           # nothing for this long: ERROR (or WARN if optional)
-    optional: bool = False   # e.g. the map, which only exists while RTAB-Map runs
+    optional: bool = False   # e.g. RTAB-Map, which only runs in some sessions
     window: int = 50
     _times: collections.deque = field(default_factory=collections.deque, repr=False)
 

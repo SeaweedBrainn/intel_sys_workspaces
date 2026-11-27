@@ -1,14 +1,13 @@
 # The robot's stacks as compose services, one launch file each, on the Jetson.
 # Use with the base file and the Zenoh overlay; scripts/robot.sh sets this up:
 #
-#   scripts/robot.sh up                    # drivers and robot description
-#   scripts/dashboard.sh                   # dashboard (supplies its tokens), after the drivers
+#   scripts/robot.sh up                    # drivers, robot description and health
 #   scripts/robot.sh up localization       # + Point-LIO and RTAB-Map (mapping)
 #   scripts/robot.sh up navigation         # + Nav2 on RTAB-Map's /map
 #   scripts/robot.sh up foxglove           # Foxglove bridge on the Tailscale address, port 8765
 #   scripts/robot.sh ps | logs -f <service> | stop <service> | down
 #
-# Drivers and the dashboard restart on their own after a crash or reboot.
+# Drivers, the robot description and health restart on their own after a crash or reboot.
 # Localization and navigation do not: a Point-LIO restart re-anchors odometry
 # wherever the robot is, and a mapping restart wipes the map, so they are started
 # deliberately for each session.
@@ -16,7 +15,7 @@
 # Least privilege: only the STM32 stack gets privileged /dev access (the board can
 # re-enumerate as a different ttyACM). The LiDAR is on Ethernet. The camera gets the
 # video and USB device classes only, not privileged mode. Nothing else touches
-# hardware, and only the dashboard can write to the workspace.
+# hardware, and nothing can write to the workspace.
 
 x-robot: &robot
   image: ${ROBOT_IMAGE:-intel-sys-rover:latest}
@@ -147,21 +146,3 @@ services:
     container_name: robot-health
     command: ros2 launch intel_sys_hardware health.launch.py
     restart: unless-stopped
-
-  # Being replaced by Foxglove (docs/FOXGLOVE.md): only started by scripts/dashboard.sh, and
-  # no longer brought back after a reboot.
-  dashboard:
-    <<: *robot
-    container_name: robot-dashboard
-    volumes:
-      - ./:/workspaces/intel_sys
-    # Started by scripts/dashboard.sh, which supplies the tokens and the Tailscale bind address.
-    environment:
-      - ROS_DOMAIN_ID=${ROS_DOMAIN_ID:-0}
-      - DASHBOARD_HOST=${DASHBOARD_HOST:-127.0.0.1}
-      - DASHBOARD_PORT=${DASHBOARD_PORT:-8080}
-      - DASHBOARD_TOKEN=${DASHBOARD_TOKEN:-}
-      - DASHBOARD_VIEW_TOKEN=${DASHBOARD_VIEW_TOKEN:-}
-    command: python3 /workspaces/intel_sys/scripts/dashboard/dashboard.py
-    profiles: [dashboard]
-    restart: "no"

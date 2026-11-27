@@ -47,13 +47,6 @@ else
   record FAIL "colcon test"
 fi
 
-# Pure-Python tests of the dashboard and autonomy scripts (not colcon packages).
-if python3 -m pytest -q scripts/autonomy scripts/dashboard; then
-  record PASS "script tests"
-else
-  record FAIL "script tests"
-fi
-
 colcon test-result --verbose > /tmp/_colcon_result.txt 2>&1 || true
 cat /tmp/_colcon_result.txt
 rm -f /tmp/_colcon_result.txt

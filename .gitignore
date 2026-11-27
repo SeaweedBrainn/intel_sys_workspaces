@@ -18,8 +18,7 @@ bags/
 *.db3
 *.mcap
 *.bag
-results/*
-!results/.gitkeep
+results/
 
 # Robot runtime data (RTAB-Map database)
 data/

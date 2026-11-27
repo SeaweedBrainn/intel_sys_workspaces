@@ -11,7 +11,7 @@ from std_srvs.srv import Trigger
 from sensor_msgs.msg import Imu, Joy
 from std_msgs.msg import UInt16, Bool
 
-from intel_sys_hardware.ros_robot_controller_sdk import Board
+from intel_sys_hardware.ros_robot_controller_sdk import Board, link_alive
 from intel_sys_interfaces.srv import GetBusServoState, GetPWMServoState
 from intel_sys_interfaces.msg import (
     ButtonState, BuzzerState, LedState, MotorsState,
@@ -28,9 +28,16 @@ class RosRobotControllerNode(Node):
         self.declare_parameter('baudrate', 1000000)
         self.declare_parameter('imu_frame', 'imu_link')
         self.declare_parameter('motor_ids', [1, 2, 3, 4])
+        # No valid frame from the board for this long (or a serial error) means the
+        # link is gone, e.g. the USB device re-enumerated; the port is then reopened.
+        self.declare_parameter('link_timeout', 1.0)
 
         port = self.get_parameter('port').value
         baudrate = self.get_parameter('baudrate').value
+        self.port, self.baudrate = port, baudrate
+        self.link_timeout = self.get_parameter('link_timeout').value
+        self.link_ok = True
+        self.opened_at = time.monotonic()
         self.IMU_FRAME = self.get_parameter('imu_frame').value
         self.motor_ids = self.get_parameter('motor_ids').value
 
@@ -80,8 +87,45 @@ class RosRobotControllerNode(Node):
 
         # 50Hz Sensor Polling Timer
         self.timer = self.create_timer(0.02, self.pub_loop, callback_group=self.sensor_cb_group)
+        self.create_timer(0.5, self.check_link, callback_group=MutuallyExclusiveCallbackGroup())
 
         self.get_logger().info('STM32 controller bridge initialized and running with MultiThreadedExecutor.')
+
+    def check_link(self):
+        """Reopen the serial port when the board has gone silent or the port failed.
+
+        Without this, a USB re-enumeration left the bridge running on a dead file
+        descriptor, publishing nothing and reporting nothing (docs/ROADMAP.md TODO).
+        """
+        if not (self.running and self.reception_enabled):
+            return
+        now = time.monotonic()
+        last = self.board.last_frame
+        if last is None and now - self.opened_at <= self.link_timeout:
+            return  # just (re)opened: give the board time to send its first frame
+        if link_alive(last if last is not None else self.opened_at, self.board.failed, now, self.link_timeout):
+            if not self.link_ok:
+                self.link_ok = True
+                self.get_logger().info(f'STM32 link back on {self.port}')
+            return
+        if self.link_ok:
+            self.link_ok = False
+            why = 'serial error' if self.board.failed else f'no data for {self.link_timeout:.1f} s'
+            self.get_logger().error(f'STM32 link lost ({why}); reopening {self.port}')
+        old = self.board
+        try:
+            old.close()
+        except Exception:
+            pass
+        try:
+            board = Board(device=self.port, baudrate=self.baudrate)
+        except Exception as e:
+            self.get_logger().warn(f'cannot reopen {self.port}: {e}', throttle_duration_sec=10.0)
+            return
+        board.enable_reception(self.reception_enabled)
+        board.set_motor_speed([[mid, 0] for mid in self.motor_ids])  # start from stopped
+        self.opened_at = time.monotonic()
+        self.board = board
 
     def get_node_state(self, request, response):
         response.success = True

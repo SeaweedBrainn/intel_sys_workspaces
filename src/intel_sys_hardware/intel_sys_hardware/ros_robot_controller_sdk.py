@@ -7,6 +7,16 @@ import struct
 import serial
 import threading
 
+def link_alive(last_frame, failed, now, timeout):
+    """True while the board link works: no I/O error, and a valid frame within timeout s.
+
+    last_frame is the time.monotonic() of the last valid frame, None before the first.
+    The board reports its IMU continuously, so silence means the link is gone (e.g. the
+    USB device re-enumerated and the open file descriptor is dead).
+    """
+    return not failed and last_frame is not None and now - last_frame <= timeout
+
+
 class PacketControllerState(enum.IntEnum):
     PACKET_CONTROLLER_STATE_STARTBYTE1 = 0
     PACKET_CONTROLLER_STATE_STARTBYTE2 = 1
@@ -105,6 +115,8 @@ class Board:
         self.servo_read_lock = threading.Lock()
         self.pwm_servo_read_lock = threading.Lock()
         self.is_closed = False
+        self.failed = False        # a read or write on the port raised
+        self.last_frame = None     # time.monotonic() of the last valid frame
 
         self.sys_queue = queue.Queue(maxsize=1)
         self.bus_servo_queue = queue.Queue(maxsize=1)
@@ -292,7 +304,10 @@ class Board:
         buf.append(checksum_crc8(bytes(buf[2:])))
         with self.serial_write_lock:
             if not self.is_closed and self.port.is_open:
-                self.port.write(buf)
+                try:
+                    self.port.write(buf)
+                except (serial.SerialException, OSError):
+                    self.failed = True
 
     def set_led(self, on_time, off_time, repeat=1, led_id=1):
         on_time = int(on_time * 1000)
@@ -448,6 +463,7 @@ class Board:
                 try:
                     recv_data = self.port.read()
                 except Exception:
+                    self.failed = True
                     break
                 if recv_data:
                     for dat in recv_data:
@@ -486,6 +502,7 @@ class Board:
                         elif self.state == PacketControllerState.PACKET_CONTROLLER_STATE_CHECKSUM:
                             crc8 = checksum_crc8(bytes(self.frame))
                             if crc8 == dat:
+                                self.last_frame = time.monotonic()
                                 func = PacketFunction(self.frame[0])
                                 if func in self.parsers:
                                     self.parsers[func](bytes(self.frame[2:]))

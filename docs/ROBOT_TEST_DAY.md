@@ -112,13 +112,18 @@ scripts/robot.sh logs -f explorer
 
 Press **Explore: START** in Foxglove in a space with a few rooms or corridors.
 
-- [ ] Each goal logs `planned in N ms` (sim: 3–46 ms): ____ ms on the Jetson.
+- [ ] The log's first line reads `Nav2 limits ... (read from controller_server)`.
+- [ ] Each goal logs `planned in N ms` (sim: median 140 ms, max 310 ms on the laptop): ____ ms on the Jetson.
 - [ ] Goals face unmapped space (the robot arrives looking at what's unknown).
 - [ ] It finishes by itself (`no frontiers left`) and drives back to the start.
 - [ ] **E-STOP** stops it; **Explore: STOP** cancels the goal.
 - [ ] Mapped area and time: ____ m² in ____ min.
 
-If it zig-zags or flips between goals, note where; `min_gain` (2 m²) and `switch_hysteresis` (0.15) are the two settings to look at.
+- [ ] **Explore: STOP mid-goal:** the robot stops within a second or two (Nav2's goal is cancelled), and nothing drives it afterwards.
+
+If it zig-zags or flips between goals, note where; `min_new_area` (2 m², smallest view worth a trip), `switch_hysteresis` (0.15), `goal_max_cost` (30, how far goals keep from walls) and `chunk_radius` (1.5 m) are the settings to look at.
+
+If the robot wedges against a door jamb or corner and Nav2 reports "Failed to make progress" over and over, note it: with reversing disabled, Nav2's recoveries (clear costmaps, spin, wait) can't back it out. That decides whether a short, slow, checked reverse is worth allowing.
 
 ## 7. Tag following (15 minutes, camera on)
 

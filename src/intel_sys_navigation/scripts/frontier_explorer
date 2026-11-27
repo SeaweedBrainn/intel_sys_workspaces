@@ -1,25 +1,30 @@
 #!/usr/bin/env python3
-"""Frontier exploration: send Nav2 goals to the edge of the known map until none are left.
+"""Frontier exploration: send Nav2 goals until no frontier is left, then drive home.
 
-Reads RTAB-Map's /map and the robot pose (map -> base_footprint), chooses a frontier
-and sends it to Nav2's navigate_to_pose. With goal_strategy:=tour (the default; see
-intel_sys_navigation.tour) each frontier gets the unknown area its goal would show the
-front-facing sensors and a heading that faces it; the visiting order of all of them is
-planned over real path lengths and turns, and the robot drives to the first stop. The
-tour is re-planned each second, and the goal only changes when another tour is more
-than switch_hysteresis cheaper. Frontiers that would reveal less than min_gain m^2
-don't count, which is also what ends exploration. goal_strategy:=greedy picks the best
-single frontier instead (large, near, ahead; see intel_sys_navigation.frontiers).
+Once the map changes (RTAB-Map's /map, about once a second):
+  1. Frontier chunks: free cells next to unknown, clustered, small clusters dropped,
+     big ones split (intel_sys_navigation.frontiers).
+  2. A viewpoint per chunk: the reachable spot that sees the most of its frontier
+     cells within the sensors' front 180 degrees, and the heading to see them from.
+     A chunk is only worth visiting if that view holds at least min_new_area of
+     unknown space; that is also what ends exploration.
+     Reachable means on Nav2's global costmap, through known cells cheaper than
+     "inscribed", so every goal sent is one Nav2 can plan to.
+  3. goal_strategy:=tour (default): the order of visiting all viewpoints, planned
+     over path lengths and turns in seconds; the robot drives to the first stop, and
+     only switches when another tour is more than switch_hysteresis cheaper.
+     goal_strategy:=greedy: the viewpoint with the most unknown area per second.
+  (intel_sys_navigation.tour for 2 and 3.)
 
-Only frontiers the robot can reach through known free space count, and Nav2's
-planner must find a path to a goal before it is sent; goals without one are
-blacklisted at once. When several goals in a row are refused, the robot itself is
-probably boxed in (e.g. inside an obstacle's inflation): those goals are released
-and the next one goes to Nav2, whose recoveries can free the robot. A goal is
-dropped and re-picked when its frontier has been mapped; a goal that is reached,
-fails or takes too long is blacklisted. With no frontiers left it drives back to
-where it started (which also lets RTAB-Map close the loop) and exits. Only sends
-goals: Nav2 drives, and cancelling the goal stops it.
+A goal ends when its frontier has been mapped (the next one preempts it in Nav2), when
+it is reached, fails, or takes three times its expected travel time; the last three
+are blacklisted. With no frontier left it drives back to where it started (which also
+lets RTAB-Map close the loop). Every goal sent is tracked until Nav2 reports its end,
+so ~/stop and Ctrl-C cancel whatever is running. Only sends goals: Nav2 drives.
+
+Travel times use Nav2's own top speed and turn rate, read at startup from the velocity
+smoother (max_velocity), which every controller's output passes through, so they don't
+depend on which controller runs.
 
     ros2 run intel_sys_navigation frontier_explorer --ros-args -p use_sim_time:=true
 
@@ -31,11 +36,13 @@ import math
 import signal
 import time
 
+import numpy as np
 import rclpy
 from action_msgs.msg import GoalStatus
 from geometry_msgs.msg import PoseStamped
-from nav2_msgs.action import ComputePathToPose, NavigateToPose
+from nav2_msgs.action import NavigateToPose
 from nav_msgs.msg import OccupancyGrid
+from rcl_interfaces.srv import GetParameters
 from rclpy.action import ActionClient
 from rclpy.node import Node
 from rclpy.qos import DurabilityPolicy, QoSProfile, ReliabilityPolicy
@@ -45,61 +52,82 @@ from std_msgs.msg import String
 from std_srvs.srv import Trigger
 from tf2_ros import Buffer, TransformListener
 
-import numpy as np
-
-from intel_sys_navigation.frontiers import choose, find_frontiers, still_frontier, target_cell, usable
-from intel_sys_navigation.tour import PathGraph, candidates, leg_costs, pick
+from intel_sys_navigation.frontiers import Grid, frontier_chunks, still_frontier
+from intel_sys_navigation.tour import PathGraph, best_viewpoint, leg_costs, pick
 
 SAME_GOAL = 0.3   # m: goals closer than this are the same goal
+
+
+def grid(msg):
+    return Grid(np.array(msg.data, dtype=np.int8).reshape(msg.info.height, msg.info.width),
+                msg.info.resolution, (msg.info.origin.position.x, msg.info.origin.position.y))
 
 
 class FrontierExplorer(Node):
     def __init__(self):
         super().__init__('frontier_explorer')
-        self.min_size = self.declare_parameter('min_frontier_cells', 8).value
-        self.goal_timeout = self.declare_parameter('goal_timeout', 90.0).value
-        self.done_after = self.declare_parameter('empty_checks_before_done', 5).value
-        self.return_home = self.declare_parameter('return_home', True).value
-        self.wait_for_start = self.declare_parameter('wait_for_start', False).value
-        self.strategy = self.declare_parameter('goal_strategy', 'tour').value
+        p = self.declare_parameter
+        self.min_size = p('min_frontier_cells', 8).value
+        self.chunk_radius = p('chunk_radius', 1.5).value              # m: one viewpoint per chunk
+        self.done_after = p('empty_checks_before_done', 5).value
+        self.return_home = p('return_home', True).value
+        self.wait_for_start = p('wait_for_start', False).value
+        self.strategy = p('goal_strategy', 'tour').value
         # The L2 and the D435 face +x; the robot body blocks the rear half.
-        self.fov = math.radians(self.declare_parameter('sensor_fov_deg', 180.0).value)
-        self.gain_range = self.declare_parameter('gain_range', 5.0).value          # m
-        self.min_gain = self.declare_parameter('min_gain', 2.0).value              # m^2
-        # Seconds per metre and per radian in the tour's costs: Nav2's max_speed_xy and
-        # the Rotation Shim's rotate_to_heading_angular_vel.
-        self.speed = self.declare_parameter('tour_speed', 0.2).value               # m/s
-        self.turn_rate = self.declare_parameter('tour_turn_rate', 0.5).value       # rad/s
-        self.hysteresis = self.declare_parameter('switch_hysteresis', 0.15).value
-        self.path_cell = self.declare_parameter('path_cell', 0.15).value           # m
-        self.refusals_before_recovery = self.declare_parameter('refusals_before_recovery', 3).value
-        self.map = None
+        self.fov = math.radians(p('sensor_fov_deg', 180.0).value)
+        self.view_range = p('view_range', 5.0).value                  # m: frontier cells counted as seen
+        # A visit must reveal at least this much unknown area (in view from the viewpoint).
+        # Cost-benefit, not physics: smaller slivers (corners, behind furniture) cost a trip
+        # each and often can't be mapped at all. 2.0 came from the sim (office.sdf, where
+        # without it the robot spent 6 minutes on slivers); tune it on the robot.
+        self.min_new_area = p('min_new_area', 2.0).value             # m^2
+        self.hysteresis = p('switch_hysteresis', 0.15).value
+        self.blacklist_radius = p('blacklist_radius', 0.5).value
+        # Goals only on global-costmap cells this cheap (0-98 scale): with our inflation
+        # (0.55 m, fall-off 5) 30 is about 0.45 m from obstacles, room to stop and turn.
+        self.goal_max_cost = p('goal_max_cost', 30).value
+        # No goals nearer the robot than this: a goal 0.46 m away left it stuck until Nav2's
+        # progress checker (0.5 m in 10 s) aborted it (sim, 2026-11-26), and from that close
+        # the sensors already see the frontier.
+        self.min_goal_distance = p('min_goal_distance', 0.6).value
+        # A goal fails after timeout_factor x its expected travel time (at least min_goal_timeout).
+        self.timeout_factor = p('timeout_factor', 3.0).value
+        self.min_timeout = p('min_goal_timeout', 30.0).value
+        self.smoother = p('velocity_smoother', 'velocity_smoother').value
+        # Used until Nav2's own values are read (and if it doesn't have them).
+        self.limits = {'speed': 0.2, 'turn_rate': 0.6}
+        self.limits_read = False
+
+        self.map = self.costmap = None
+        self.map_changed = False
         self.tf = Buffer()
         TransformListener(self.tf, self)
-        qos = QoSProfile(depth=1, durability=DurabilityPolicy.TRANSIENT_LOCAL,
-                         reliability=ReliabilityPolicy.RELIABLE)
-        self.create_subscription(OccupancyGrid, '/map', self.on_map, qos)
+        latched = QoSProfile(depth=1, durability=DurabilityPolicy.TRANSIENT_LOCAL,
+                             reliability=ReliabilityPolicy.RELIABLE)
+        self.create_subscription(OccupancyGrid, '/map', self.on_map, latched)
+        self.create_subscription(OccupancyGrid, p('costmap_topic', '/global_costmap/costmap').value,
+                                 self.on_costmap, latched)
         self.nav = ActionClient(self, NavigateToPose, 'navigate_to_pose')
-        self.planner = ActionClient(self, ComputePathToPose, 'compute_path_to_pose')
-        self.checking = False     # waiting for the planner's answer on a candidate goal
-        self.sent_at = None
-        self.state_pub = self.create_publisher(String, '~/state', QoSProfile(
-            depth=1, durability=DurabilityPolicy.TRANSIENT_LOCAL, reliability=ReliabilityPolicy.RELIABLE))
+        self.params = self.create_client(GetParameters, f'/{self.smoother}/get_parameters')
+        self.state_pub = self.create_publisher(String, '~/state', latched)
         self.create_service(Trigger, '~/start', self.on_start)
         self.create_service(Trigger, '~/stop', self.on_stop)
+        self.active = {}      # goal id -> handle, for every goal Nav2 accepted and hasn't finished
+        self.seq = 0          # id of the latest goal sent
         self.reset()
         self.set_state('idle' if self.wait_for_start else 'explore')   # explore -> home -> done/idle
         self.create_timer(1.0, self.step)
+
+    # ---- session state ----
 
     def reset(self):
         """Fresh session: new home, empty blacklist and stats."""
         self.home = None
         self.goal = self.target = self.goal_handle = None
+        self.deadline = None
         self.blacklist = []
-        self.refused = []         # goals the planner refused since its last success
         self.empty = 0
-        self.stats = {'goals': 0, 'reached': 0, 'failed': 0, 'replaced': 0, 'switched': 0, 'no_path': 0,
-                      'recoveries': 0}
+        self.stats = {'goals': 0, 'reached': 0, 'failed': 0, 'replaced': 0, 'switched': 0}
 
     def set_state(self, state):
         self.state = state
@@ -121,7 +149,7 @@ class FrontierExplorer(Node):
 
     def on_stop(self, _req, res):
         was = self.state
-        self.cancel()
+        self.cancel_all()
         self.end()
         res.success, res.message = True, f'stopped ({was}); {self.stats}'
         self.get_logger().info(res.message)
@@ -129,6 +157,29 @@ class FrontierExplorer(Node):
 
     def on_map(self, msg):
         self.map = msg
+        self.map_changed = True
+
+    def on_costmap(self, msg):
+        self.costmap = msg
+
+    # ---- Nav2's limits ----
+
+    def read_limits(self):
+        """Top forward speed and turn rate from Nav2's velocity smoother ([vx, vy, wz])."""
+        if self.limits_read or not self.params.service_is_ready():
+            return
+
+        def done(fut):
+            vals = fut.result().values if fut.result() else []
+            v = list(vals[0].double_array_value) if vals and vals[0].type == 8 else []
+            if len(v) == 3 and v[0] > 0 and v[2] > 0:
+                self.limits = {'speed': v[0], 'turn_rate': v[2]}
+            self.limits_read = True
+            self.get_logger().info(f'Nav2 limits for travel times: {self.limits} '
+                                   f'({"read from " + self.smoother if len(v) == 3 else "defaults"})')
+        self.params.call_async(GetParameters.Request(names=['max_velocity'])).add_done_callback(done)
+
+    # ---- goals ----
 
     def pose(self):
         try:
@@ -139,150 +190,81 @@ class FrontierExplorer(Node):
         yaw = math.atan2(2 * (q.w * q.z + q.x * q.y), 1 - 2 * (q.y * q.y + q.z * q.z))
         return (t.transform.translation.x, t.transform.translation.y), yaw
 
-    def grid(self):
-        m = self.map
-        grid = np.array(m.data, dtype=np.int8).reshape(m.info.height, m.info.width)
-        return grid, m.info.resolution, (m.info.origin.position.x, m.info.origin.position.y)
-
-    def plan_tour(self, fronts, grid, res, origin, xy, yaw):
-        """Next stop of the planned tour: (frontier, heading, note), 'keep' or None.
-
-        'keep' means the current goal is still the one to drive to. None means no
-        frontier is worth visiting.
-        """
-        t0 = time.monotonic()
-        fronts = [f for f in fronts if usable(f, xy, self.blacklist)]
-        cands = candidates(fronts, grid, res, origin, self.fov, self.gain_range, self.min_gain)
-        if not cands:
-            return None
-        graph = PathGraph(grid, res, origin, cell=self.path_cell)
-        dist, depart, arrive = graph.legs([xy] + [c.frontier.goal for c in cands])
-        keep = [0] + [i + 1 for i in range(len(cands)) if np.isfinite(dist[0, i + 1])]
-        if len(keep) == 1:
-            return None
-        cands = [cands[i - 1] for i in keep[1:]]
-        sub = np.ix_(keep, keep)
-        cost = leg_costs(dist[sub], depart[sub], arrive[sub], [yaw] + [c.heading for c in cands],
-                         self.speed, self.turn_rate)
-        current = None
-        if self.goal is not None:
-            # Two clusters can share a goal point (the nearest clear cell to each), so
-            # match the goal itself first, then the frontier cell being watched.
-            current = next((i + 1 for i, c in enumerate(cands)
-                            if math.dist(c.frontier.goal, self.goal) < SAME_GOAL), None)
-            if current is None:
-                current = next((i + 1 for i, c in enumerate(cands)
-                                if still_frontier([c.frontier], self.target)), None)
-        nxt, order, switched = pick(cost, current, self.hysteresis)
-        if self.goal is not None and (nxt == current or
-                                      math.dist(cands[nxt - 1].frontier.goal, self.goal) < SAME_GOAL):
-            return 'keep'   # resending the same goal would restart Nav2 for nothing
-        if switched:
-            self.stats['switched'] += 1
-        elif self.goal is not None and current is None:
-            self.stats['replaced'] += 1   # its frontier no longer reveals enough
-        total = sum(cost[a, b] for a, b in zip([0] + order, order))
-        c = cands[nxt - 1]
-        note = (f'gain {c.gain:.1f} m2, {cost[0, nxt]:.0f} s away; tour of {len(order)} stops, '
-                f'{total:.0f} s{" (switched)" if switched else ""}; '
-                f'planned in {1000 * (time.monotonic() - t0):.0f} ms')
-        return c.frontier, c.heading, note
-
-    def pose_stamped(self, xy, yaw):
-        p = PoseStamped()
-        p.header.frame_id = 'map'
-        p.header.stamp = self.get_clock().now().to_msg()
-        p.pose.position.x, p.pose.position.y = xy
-        p.pose.orientation.z, p.pose.orientation.w = math.sin(yaw / 2), math.cos(yaw / 2)
-        return p
-
-    def check_then_send(self, xy, yaw):
-        """Send the goal only if Nav2's planner finds a path to it (answers in well under a second)."""
-        if not self.planner.server_is_ready():
-            self.send(xy, yaw)
-            return
-        g = ComputePathToPose.Goal()
-        g.goal = self.pose_stamped(xy, yaw)
-        g.use_start = False
-        self.checking = True
-
-        def on_result(fut):
-            self.checking = False
-            res = fut.result()
-            if res.status == GoalStatus.STATUS_SUCCEEDED and res.result.path.poses:
-                self.refused = []
-                self.send(xy, yaw)
-                return
-            self.stats['no_path'] += 1
-            self.refused.append(xy)
-            if len(self.refused) < self.refusals_before_recovery:
-                self.blacklist.append(xy)
-                self.get_logger().warn(f'no path to {xy[0]:.2f}, {xy[1]:.2f}; blacklisted')
-                return
-            # Several different goals refused in a row: more likely the robot can't plan
-            # from where it stands (e.g. inside an obstacle's inflation) than that all of
-            # them are unreachable. Un-blacklist them and let navigate_to_pose's recoveries
-            # (clear costmaps, spin, wait) free the robot; if that goal fails, it is
-            # blacklisted as usual.
-            self.blacklist = [b for b in self.blacklist if b not in self.refused]
-            self.refused = []
-            self.stats['recoveries'] += 1
-            self.get_logger().warn(f'planner refused {self.refusals_before_recovery} goals in a row; '
-                                   f'sending {xy[0]:.2f}, {xy[1]:.2f} to Nav2 to recover')
-            self.send(xy, yaw)
-
-        def on_accepted(fut):
-            h = fut.result()
-            if not h.accepted:
-                self.checking = False
-                self.send(xy, yaw)  # planner busy: let navigate_to_pose decide
-                return
-            h.get_result_async().add_done_callback(on_result)
-
-        self.planner.send_goal_async(g).add_done_callback(on_accepted)
-
-    def send(self, xy, yaw):
+    def send(self, xy, yaw, timeout):
+        """Send a goal; it preempts any running one in Nav2 (no cancel first: a cancel sent
+        just before the new goal sometimes cancelled the new goal, sim 2026-11-24)."""
         g = NavigateToPose.Goal()
-        g.pose = self.pose_stamped(xy, yaw)
-        self.goal, self.sent_at, self.goal_handle = xy, self.get_clock().now(), None
-        self.nav.send_goal_async(g).add_done_callback(self.on_accepted)
+        g.pose = PoseStamped()
+        g.pose.header.frame_id = 'map'
+        g.pose.header.stamp = self.get_clock().now().to_msg()
+        g.pose.pose.position.x, g.pose.pose.position.y = xy
+        g.pose.pose.orientation.z, g.pose.pose.orientation.w = math.sin(yaw / 2), math.cos(yaw / 2)
+        self.seq += 1
+        seq = self.seq
+        self.goal, self.goal_handle = xy, None
+        self.deadline = time.monotonic() + timeout
+        self.nav.send_goal_async(g).add_done_callback(lambda f: self.on_accepted(f, seq))
 
-    def on_accepted(self, fut):
+    def on_accepted(self, fut, seq):
         h = fut.result()
         if not h.accepted:
-            self.finish(False, 'rejected')
+            if seq == self.seq:
+                self.finish(False, 'rejected')
             return
-        self.goal_handle = h
-        h.get_result_async().add_done_callback(
-            lambda f, h=h: self.on_result(h, f.result().status))
+        self.active[bytes(h.goal_id.uuid)] = h
+        h.get_result_async().add_done_callback(lambda f: self.on_result(h, f.result().status))
+        if seq != self.seq or self.goal is None:
+            h.cancel_goal_async()     # superseded or stopped while it was being sent
+        else:
+            self.goal_handle = h
 
     def on_result(self, h, status):
-        if h is not self.goal_handle:
-            return  # an old goal we already replaced
-        self.finish(status == GoalStatus.STATUS_SUCCEEDED, f'status {status}')
+        self.active.pop(bytes(h.goal_id.uuid), None)
+        if h is self.goal_handle:
+            self.finish(status == GoalStatus.STATUS_SUCCEEDED, f'status {status}')
 
     def finish(self, ok, why):
         if self.state == 'home':
             self.get_logger().info(f'back home ({why}); exploration done: {self.stats}')
             self.end()
-        elif ok and self.goal is not None:
-            # Seen from there: don't come back to the same spot if unknown space is left
-            # that the sensors can't fill (dark or shiny surfaces, beyond the map's range).
-            self.stats['reached'] += 1
-            self.blacklist.append(self.goal)
         elif self.goal is not None:
-            self.stats['failed'] += 1
+            # Blacklisted either way: a reached viewpoint whose frontier is still there
+            # can't be mapped from there (dark or shiny surfaces, beyond the map's range).
+            self.stats['reached' if ok else 'failed'] += 1
             self.blacklist.append(self.goal)
-            self.get_logger().warn(f'goal {self.goal[0]:.2f}, {self.goal[1]:.2f} failed ({why}); blacklisted')
+            if not ok:
+                self.get_logger().warn(f'goal {self.goal[0]:.2f}, {self.goal[1]:.2f} failed ({why}); blacklisted')
         self.goal = self.goal_handle = None
 
-    def cancel(self):
-        if self.goal_handle is not None:
-            self.goal_handle.cancel_goal_async()
+    def cancel_all(self):
+        """Cancel every goal Nav2 is still running for us (including superseded ones)."""
+        for h in list(self.active.values()):
+            h.cancel_goal_async()
+        self.seq += 1   # a goal still being sent is cancelled when Nav2 accepts it
         self.goal = self.goal_handle = None
+
+    # ---- the loop ----
+
+    def plan(self, xy, yaw):
+        """Candidates (viewpoints) and the (k+1, k+1) cost matrix, robot first."""
+        m, cm = grid(self.map), grid(self.costmap)
+        chunks = frontier_chunks(m, self.min_size, self.chunk_radius)
+        graph = PathGraph(cm)
+        from_robot = graph.distances_from(xy)
+        skip = [(b, self.blacklist_radius) for b in self.blacklist] + [(xy, self.min_goal_distance)]
+        cands = [c for c in (best_viewpoint(ch, m, graph, from_robot, self.fov, self.view_range, skip,
+                                            self.goal_max_cost)
+                             for ch in chunks) if c is not None and c.new_area >= self.min_new_area]
+        if not cands:
+            return chunks, [], None
+        dist, depart, arrive = graph.legs([xy] + [c.xy for c in cands])
+        cost = leg_costs(dist, depart, arrive, [yaw] + [c.heading for c in cands],
+                         self.limits['speed'], self.limits['turn_rate'])
+        return chunks, cands, cost
 
     def step(self):
-        if self.state in ('done', 'idle') or self.map is None:
+        self.read_limits()
+        if self.state in ('done', 'idle') or self.map is None or self.costmap is None:
             return
         p = self.pose()
         if p is None:
@@ -291,59 +273,63 @@ class FrontierExplorer(Node):
         if self.home is None:
             self.home = (xy, yaw)
             self.get_logger().info(f'home at {xy[0]:.2f}, {xy[1]:.2f}')
-        if self.state == 'home' or self.checking or (self.goal is not None and self.goal_handle is None):
-            return  # driving home, or waiting for the planner or Nav2
+        if self.state == 'home':
+            return
         if not self.nav.server_is_ready():
             self.get_logger().info('waiting for navigate_to_pose', throttle_duration_sec=10)
             return
-        grid, res, origin = self.grid()
-        fronts = find_frontiers(grid, res, origin, self.min_size, robot_xy=xy)
-        if self.goal is not None:
-            age = (self.get_clock().now() - self.sent_at).nanoseconds * 1e-9
-            if age > self.goal_timeout:
-                self.blacklist.append(self.goal)
-                self.stats['failed'] += 1
-                self.get_logger().warn(f'goal timed out after {age:.0f} s; blacklisted')
-                self.cancel()
-            elif not still_frontier(fronts, self.target):
-                self.stats['replaced'] += 1
-                self.get_logger().info('frontier mapped before arrival; picking the next one')
-                # No cancel: the next goal preempts this one in Nav2. A cancel sent just
-                # before the new goal could cancel the new goal instead (seen in the sim).
-                self.goal = self.goal_handle = None
-            elif self.strategy != 'tour':
-                return
-        if self.strategy == 'tour':
-            nxt = self.plan_tour(fronts, grid, res, origin, xy, yaw)
-            if nxt == 'keep':
-                return
-            if nxt is not None and self.goal is not None:
-                # Switching goals. No cancel: the new goal preempts this one (see above).
-                self.goal = self.goal_handle = None
-        else:
-            best = choose(fronts, xy, yaw, self.blacklist)
-            nxt = None if best is None else (
-                best, math.atan2(best.goal[1] - xy[1], best.goal[0] - xy[0]), '')
-        if nxt is None and self.goal is not None:
-            return  # nothing worth switching to: keep driving to the current goal
-        if nxt is None:
+        if self.goal is not None and self.goal_handle is None:
+            return  # waiting for Nav2 to accept the last goal
+        if self.goal is not None and time.monotonic() > self.deadline:
+            self.get_logger().warn('goal took too long')
+            self.finish(False, 'timeout')   # the next goal preempts it, or cancel_all below
+        if self.goal is not None and not self.map_changed:
+            return
+        self.map_changed = False
+
+        t0 = time.monotonic()
+        chunks, cands, cost = self.plan(xy, yaw)
+        if self.goal is not None and not still_frontier(chunks, self.target):
+            self.stats['replaced'] += 1
+            self.get_logger().info('frontier mapped before arrival; picking the next one')
+            self.goal = None    # its handle stays tracked until the next goal preempts it
+        if not cands:
+            if self.goal is not None:
+                return  # its frontier is still there; keep driving to it
+            self.cancel_all()   # nothing to drive to: stop whatever Nav2 is still doing
             self.empty += 1
             if self.empty >= self.done_after:
                 self.get_logger().info(f'no frontiers left; {self.stats}')
                 if self.return_home:
                     self.set_state('home')
-                    self.send(*self.home)
+                    self.send(*self.home, timeout=float('inf'))
                 else:
                     self.end()
             return
         self.empty = 0
-        best, heading, note = nxt
-        self.target = target_cell(best)
+
+        current = None
+        if self.goal is not None:
+            current = next((i + 1 for i, c in enumerate(cands) if still_frontier([c.chunk], self.target)), None)
+        if self.strategy == 'tour':
+            nxt, order, switched = pick(cost, current, self.hysteresis)
+        else:   # greedy: most unknown area per second of travel
+            nxt = 1 + int(np.argmax([c.new_area / max(cost[0, i + 1], 1e-3) for i, c in enumerate(cands)]))
+            order, switched = [nxt], current is not None and nxt != current
+        c = cands[nxt - 1]
+        if self.goal is not None and (nxt == current or math.dist(c.xy, self.goal) < SAME_GOAL):
+            return  # keep the current goal; resending it would restart Nav2 for nothing
+        if switched:
+            self.stats['switched'] += 1
+        self.target = tuple(c.chunk.cells[np.argmin(np.hypot(*(c.chunk.cells - c.chunk.centroid).T))])
         self.stats['goals'] += 1
+        travel = float(cost[0, nxt])
+        self.send(c.xy, c.heading, max(self.min_timeout, self.timeout_factor * travel))
+        total = sum(cost[a, b] for a, b in zip([0] + order, order))
         self.get_logger().info(
-            f'frontier {self.stats["goals"]}: {best.size} cells, goal {best.goal[0]:.2f}, {best.goal[1]:.2f}, '
-            f'heading {math.degrees(heading):.0f} deg ({len(fronts)} frontiers){"; " + note if note else ""}')
-        self.check_then_send(best.goal, heading)
+            f'goal {self.stats["goals"]}: {c.xy[0]:.2f}, {c.xy[1]:.2f}, heading {math.degrees(c.heading):.0f} deg, '
+            f'sees {c.gain} frontier cells and {c.new_area:.1f} m2 unknown, {travel:.0f} s away; {len(cands)} frontiers, tour {total:.0f} s'
+            f'{" (switched)" if switched else ""}; planned in {1000 * (time.monotonic() - t0):.0f} ms')
 
 
 def main():
@@ -358,8 +344,8 @@ def main():
         while rclpy.ok() and node.state != 'done' and not stop:
             rclpy.spin_once(node, timeout_sec=0.5)
         if stop:
-            node.get_logger().info(f'stopped; cancelling the Nav2 goal. {node.stats}')
-            node.cancel()
+            node.get_logger().info(f'stopped; cancelling Nav2 goals. {node.stats}')
+            node.cancel_all()
             for _ in range(4):
                 rclpy.spin_once(node, timeout_sec=0.1)
     finally:

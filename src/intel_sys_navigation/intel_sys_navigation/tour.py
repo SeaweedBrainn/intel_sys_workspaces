@@ -1,19 +1,19 @@
 """Tour-based goal choice for frontier exploration (no ROS imports).
 
-The greedy explorer drives to whichever frontier scores best right now, which
-zig-zags and leaves small patches behind. Here every frontier cluster gets a
-viewpoint (its goal), the unknown area the sensors would see from it (gain) and
-the heading that sees the most (the sensors only cover the front half). Then the
-order of visiting all of them is planned as an open travelling-salesman path
-from the robot, with costs in seconds: turn, drive the real path, turn. The robot
-drives to the first stop; the tour is re-planned as the map grows, and the goal
-only changes when another tour is clearly cheaper (hysteresis).
+For every frontier chunk (frontiers.frontier_chunks) a viewpoint is sampled
+nearby: the reachable spot from which the sensors, which only see the front
+180 degrees, see the most of the chunk's frontier cells, and the heading to see
+them from. Then the order of visiting all viewpoints is planned as an open
+travelling-salesman path from the robot, with costs in seconds (turn, drive the
+path, turn). The robot drives to the first stop; the tour is re-planned as the
+map grows, and the goal only changes when another tour is clearly cheaper.
 
-The method follows FUEL (Zhou et al., RA-L 2021) and roadmap-explorer
-(FIT-SLAM 2): field-of-view gain and goal heading per frontier, a visiting order
-over all of them, and hysteresis before switching.
+Where the robot can drive comes from one place, Nav2's global costmap: known
+cells cheaper than "inscribed" (the robot's radius from an obstacle). So a
+viewpoint this module calls reachable is one Nav2 can plan to.
 
-Grid values follow nav_msgs/OccupancyGrid: -1 unknown, 0..100 occupancy.
+After FUEL (Zhou et al., RA-L 2021): frontier chunks, viewpoints scored by the
+frontier cells they cover, an asymmetric TSP over them, hysteresis.
 """
 import math
 from dataclasses import dataclass
@@ -22,81 +22,134 @@ import numpy as np
 from scipy.sparse import coo_matrix
 from scipy.sparse.csgraph import dijkstra
 
-from intel_sys_navigation.frontiers import FREE_MAX, _clearance, wrap
+from intel_sys_navigation.frontiers import FREE_MAX
+
+INSCRIBED = 99   # nav2 costmap as OccupancyGrid: 99 inscribed, 100 lethal, -1 unknown
 
 
 @dataclass
 class Candidate:
-    frontier: object   # frontiers.Frontier
-    gain: float        # m^2 of unknown space in the sensors' view from the goal
-    heading: float     # goal yaw: the centre of that view
+    chunk: object      # frontiers.Chunk
+    xy: tuple          # viewpoint (the goal), map frame
+    gain: int          # frontier cells of the chunk visible from it
+    heading: float     # goal yaw: the centre of the cells seen
+    new_area: float = 0.0   # m^2 of unknown space in view from there, facing heading
 
 
-def view_gain(grid, resolution, origin, xy, fov=math.pi, max_range=5.0, rays=72):
-    """(gain, heading): the unknown area a sensor with this field of view sees from xy.
+def coverage(grid, xy, cells, fov=math.pi, max_range=5.0):
+    """(count, heading): how many of cells a sensor at xy sees within one fov-wide view.
 
-    Rays are cast all the way round and stop at the first occupied cell; unknown
-    space does not block them (it may well be free). Cells off the map count as
-    unknown, since the map grows as it is explored. Each sample is weighted by the
-    area it stands for, so gain is in m^2. The fov-wide window with the most unknown
-    area gives the gain, and its centre the heading.
+    A cell is visible when it is within max_range and the straight line to it
+    crosses no occupied map cell. The fov window holding the most visible cells
+    gives the count, and their middle direction the heading.
     """
-    grid = np.asarray(grid)
-    h, w = grid.shape
-    dth = 2 * math.pi / rays
-    th = np.arange(rays) * dth
-    dr = resolution / 2
+    cells = np.asarray(cells, dtype=float)
+    d = cells - np.asarray(xy, dtype=float)
+    dist = np.hypot(d[:, 0], d[:, 1])
+    m = (dist <= max_range) & (dist > 1e-6)
+    if not m.any():
+        return 0, 0.0
+    d, dist = d[m], dist[m]
+    k = max(2, int(math.ceil(dist.max() / (grid.res / 2))) + 1)
+    t = np.linspace(0.0, 1.0, k)
+    px = xy[0] + d[:, 0:1] * t
+    py = xy[1] + d[:, 1:2] * t
+    rows = np.floor((py - grid.origin[1]) / grid.res).astype(int)
+    cols = np.floor((px - grid.origin[0]) / grid.res).astype(int)
+    inside = grid.inside(rows, cols)
+    occ = np.zeros(rows.shape, dtype=bool)
+    occ[inside] = grid.data[rows[inside], cols[inside]] > FREE_MAX
+    seen = ~occ.any(axis=1)
+    if not seen.any():
+        return 0, 0.0
+    a = np.sort(np.arctan2(d[seen, 1], d[seen, 0]))
+    ring = np.concatenate([a, a + 2 * math.pi])
+    end = np.searchsorted(ring, a + fov, side='left')       # first angle past each window
+    counts = end - np.arange(len(a))
+    i = int(np.argmax(counts))
+    last = ring[end[i] - 1]
+    return int(counts[i]), math.atan2(math.sin((a[i] + last) / 2), math.cos((a[i] + last) / 2))
+
+
+def unknown_area(grid, xy, heading, fov=math.pi, max_range=5.0, rays=72):
+    """m^2 of unknown space a sensor at xy facing heading would see: what a visit is worth.
+
+    Frontier cells seen say how much edge a viewpoint covers, not how much new space is
+    behind it; a sliver in front of a wall has cells but nothing to map. Rays stop at
+    the first occupied cell; unknown space doesn't stop them (it may well be free). Cells
+    off the map count as unknown, since the map grows as it is explored.
+    """
+    h, w = grid.data.shape
+    th = heading + (np.arange(rays) - (rays - 1) / 2) * (fov / rays)
+    dr = grid.res / 2
     r = np.arange(dr, max_range + 1e-9, dr)
     x = xy[0] + np.outer(np.cos(th), r)
     y = xy[1] + np.outer(np.sin(th), r)
-    col = np.floor((x - origin[0]) / resolution).astype(int)
-    row = np.floor((y - origin[1]) / resolution).astype(int)
+    col = np.floor((x - grid.origin[0]) / grid.res).astype(int)
+    row = np.floor((y - grid.origin[1]) / grid.res).astype(int)
     inside = (col >= 0) & (col < w) & (row >= 0) & (row < h)
     v = np.full(x.shape, -1, dtype=np.int16)
-    v[inside] = grid[row[inside], col[inside]]
+    v[inside] = grid.data[row[inside], col[inside]]
     blocked = np.maximum.accumulate(v > FREE_MAX, axis=1)
     unknown = (v < 0) & ~blocked
-    per_ray = (unknown * r).sum(axis=1) * dth * dr
-    n = min(rays, max(1, int(round(fov / dth))))
-    ring = np.concatenate([per_ray, per_ray[:n - 1]])
-    sums = np.convolve(ring, np.ones(n), mode='valid')[:rays]
-    s = int(np.argmax(sums))
-    return float(sums[s]), wrap(th[s] + (n - 1) / 2 * dth)
+    return float((unknown * r).sum() * (fov / rays) * dr)
 
 
-def candidates(frontiers, grid, resolution, origin, fov=math.pi, max_range=5.0, min_gain=0.5):
-    """A Candidate per frontier whose goal would reveal at least min_gain m^2."""
-    out = []
-    for f in frontiers:
-        gain, heading = view_gain(grid, resolution, origin, f.goal, fov, max_range)
-        if gain >= min_gain:
-            out.append(Candidate(f, gain, heading))
-    return out
+def samples(centroid, radii=(0.75, 1.25), n=12):
+    """Candidate viewpoints on rings around a chunk's centroid, plus the centroid."""
+    th = np.arange(n) * 2 * math.pi / n
+    pts = [np.asarray(centroid, dtype=float)[None, :]]
+    for r in radii:
+        pts.append(np.column_stack([centroid[0] + r * np.cos(th), centroid[1] + r * np.sin(th)]))
+    return np.vstack(pts)
+
+
+def best_viewpoint(chunk, grid, graph, robot_dist, fov=math.pi, max_range=5.0, skip=(), max_cost=30):
+    """The reachable sample that sees the most of the chunk (ties: nearer the robot), or None.
+
+    robot_dist is graph.distances_from(robot); skip holds points (with radius) to avoid,
+    e.g. blacklisted goals. A viewpoint must also sit on a costmap cell no dearer than
+    max_cost: room to stop and turn. Drivable alone (under inscribed) is only the robot's
+    radius from a wall, and goals there wedged the robot on a door jamb it couldn't back
+    out of (office.sdf, 2026-11-26; and on 2026-11-24 before goals kept their distance).
+    """
+    best = None
+    for p in samples(chunk.centroid):
+        node = graph.node_at(p)
+        if node is None or not np.isfinite(robot_dist[node]):
+            continue
+        r, c = graph.rc[node]
+        if graph.grid.data[r, c] > max_cost:
+            continue
+        if any(math.dist(p, q) < r for q, r in skip):
+            continue
+        gain, heading = coverage(grid, p, chunk.cells, fov, max_range)
+        key = (gain, -robot_dist[node])
+        if gain > 0 and (best is None or key > best[0]):
+            best = (key, Candidate(chunk, (float(p[0]), float(p[1])), gain, heading))
+    if best is None:
+        return None
+    c = best[1]
+    c.new_area = unknown_area(grid, c.xy, c.heading, fov, max_range)
+    return c
 
 
 class PathGraph:
-    """Shortest drivable paths over the map, on a coarser grid for speed.
+    """Shortest drivable paths on Nav2's global costmap.
 
-    A cell is drivable when it is known free and at least passage_clearance from an
-    occupied cell (the reachability rule in frontiers.py). A coarse cell is drivable
-    when any of its fine cells is: the band each wall leaves undrivable is wider
-    than a coarse cell, so this does not join rooms through walls.
+    Drivable: known and cheaper than inscribed, i.e. where Nav2's planner may put the
+    robot's centre. Unknown cells are left out, so a frontier is only reachable through
+    mapped space (space seen through glass or over a low wall is not).
     """
 
-    def __init__(self, grid, resolution, origin, passage_clearance=0.25, cell=0.15):
-        grid = np.asarray(grid)
-        free = (grid >= 0) & (grid <= FREE_MAX)
-        occupied = grid > FREE_MAX
-        passable = free & (_clearance(occupied, resolution) >= passage_clearance)
-        f = max(1, int(round(cell / resolution)))
-        h, w = passable.shape
-        H, W = -(-h // f), -(-w // f)
-        padded = np.zeros((H * f, W * f), dtype=bool)
-        padded[:h, :w] = passable
-        self.passable = padded.reshape(H, f, W, f).any(axis=(1, 3))
-        self.res = resolution * f
-        self.origin = origin
-        self.index = np.full(self.passable.shape, -1, dtype=np.int64)
+    def __init__(self, costmap):
+        data = costmap.data
+        self.grid = costmap
+        self.passable = (data >= 0) & (data < INSCRIBED)
+        self.res = costmap.res
+        self.origin = costmap.origin
+        H, W = data.shape
+        self.index = np.full(data.shape, -1, dtype=np.int64)
         rows, cols = np.nonzero(self.passable)
         self.index[rows, cols] = np.arange(rows.size)
         self.rc = np.column_stack([rows, cols])
@@ -112,12 +165,27 @@ class PathGraph:
         self.graph = coo_matrix((np.concatenate(wt), (np.concatenate(src), np.concatenate(dst))),
                                 shape=(n, n)).tocsr()
 
+    def node_at(self, xy):
+        """The drivable cell under xy, or None."""
+        r, c = self.grid.cell(xy)
+        if not self.grid.inside(r, c):
+            return None
+        i = int(self.index[r, c])
+        return None if i < 0 else i
+
+    def distances_from(self, xy):
+        """Path length from xy to every node (inf where unreachable); all inf if xy is off the graph."""
+        node = self.node(xy)
+        if node is None:
+            return np.full(len(self.rc), np.inf)
+        return dijkstra(self.graph, directed=False, indices=node)
+
     def xy(self, node):
         r, c = self.rc[node]
         return (self.origin[0] + (c + 0.5) * self.res, self.origin[1] + (r + 0.5) * self.res)
 
     def node(self, xy, radius=0.5):
-        """Nearest drivable coarse cell within radius of xy, or None."""
+        """Nearest drivable cell within radius of xy, or None (the robot may stand in inflation)."""
         r = int(math.floor((xy[1] - self.origin[1]) / self.res))
         c = int(math.floor((xy[0] - self.origin[0]) / self.res))
         k = int(math.ceil(radius / self.res))
@@ -177,11 +245,13 @@ def _bearing(a, b):
     return math.atan2(b[1] - a[1], b[0] - a[0])
 
 
-def leg_costs(dist, depart, arrive, yaws, speed=0.2, turn_rate=0.5):
+def leg_costs(dist, depart, arrive, yaws, speed=0.2, turn_rate=0.6):
     """Seconds to go from point i (facing yaws[i]) to point j and face yaws[j].
 
-    Nav2's Rotation Shim turns in place to face the path before driving, and the
-    goal checker turns to the goal heading on arrival, so the three parts add up.
+    Turn to face the path, drive it, turn to the goal heading. Every turn is counted
+    in full, whatever the controller does with it: the sensors only see forward, so
+    the robot has to face its way and its goal either way. speed and turn_rate are
+    the top forward speed and turn rate (Nav2's velocity smoother limits).
     """
     yaws = np.asarray(yaws, dtype=float)
     turn_out = np.abs(_wrap(depart - yaws[:, None]))

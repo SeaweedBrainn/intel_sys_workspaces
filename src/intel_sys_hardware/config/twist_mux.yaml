@@ -1,4 +1,4 @@
-# One rule for who drives (docs/ROADMAP.md, merge step 2). twist_mux forwards the
+# One rule for who drives (docs/FOXGLOVE.md, "Who drives"). twist_mux forwards the
 # highest-priority input that has sent a command within its timeout to /cmd_vel_mux,
 # which mecanum_controller (robot) or the Gazebo bridge (sim) follows.
 #

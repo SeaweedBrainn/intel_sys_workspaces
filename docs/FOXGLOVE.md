@@ -1,6 +1,6 @@
 # Foxglove
 
-Foxglove is the robot's UI; the web dashboard (`scripts/dashboard.sh`, [DASHBOARD.md](DASHBOARD.md)) is being retired and no longer starts by default.
+Foxglove is the robot's UI: views, teleop, the e-stop, and the explorer and follower controls.
 
 Start the bridge with `scripts/robot.sh up foxglove` (Tailscale address, port 8765), open `ws://<robot-tailscale-ip>:8765` in Foxglove, and import `src/intel_sys_bringup/config/foxglove_layout.json`. In the sim the bridge is on `ws://localhost:8765`.
 

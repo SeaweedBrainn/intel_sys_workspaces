@@ -41,7 +41,7 @@ Everything runs in Docker with ROS 2 Humble and `rmw_zenoh_cpp`; a `zenohd` rout
    ./run_docker.sh --build
    ```
 
-   The robot's stacks run the image named by `ROBOT_IMAGE` (default `intel-sys-rover:latest`). To run a differently tagged image, e.g. one built from another branch, put it in an untracked `.env` in the repo root: `ROBOT_IMAGE=intel-sys-rover:slam`. `scripts/robot.sh up` prints the image it uses, and the Zenoh router runs the same one.
+   On the Jetson this builds `intel-sys-rover:latest`, the image every robot stack runs.
 
 4. **Give the STM32 a stable device name.** Install the udev rules once, then check the board shows up as `/dev/rrc`:
 

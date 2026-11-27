@@ -8,16 +8,9 @@
 #   scripts/robot.sh up foxglove       # Foxglove bridge on the Tailscale address, port 8765
 #   scripts/robot.sh ros2 topic hz /odom   # ros2 CLI on the robot's middleware
 #   scripts/robot.sh <compose args>    # anything else, e.g. ps, logs -f lidar, stop navigation, down
-#
-# The image comes from ROBOT_IMAGE (default intel-sys-rover:latest), usually set in an
-# untracked .env in the repo root, e.g. ROBOT_IMAGE=intel-sys-rover:slam. The Zenoh
-# router runs the same image unless ZENOH_IMAGE says otherwise.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 export COMPOSE_FILE=docker-compose.yml:docker-compose.zenoh.yml:docker-compose.robot.yml
-if [[ -f .env ]]; then set -a; . ./.env; set +a; fi
-export ROBOT_IMAGE="${ROBOT_IMAGE:-intel-sys-rover:latest}"
-export ZENOH_IMAGE="${ZENOH_IMAGE:-$ROBOT_IMAGE}"
 
 # With the camera on, RTAB-Map waits for camera frames and stops updating without
 # them, so refuse to start localization unless the camera is publishing.
@@ -48,7 +41,6 @@ keep_previous_map() {
 }
 
 if [[ "${1:-}" == "up" ]]; then
-  echo "image: $ROBOT_IMAGE"
   case "${2:-}" in
     "")                       exec docker compose up -d zenohd stm32 lidar camera description health ;;
     localization)             require_camera localization

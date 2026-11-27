@@ -10,17 +10,19 @@ All commands run on the Jetson in the `slam-chain` worktree, `~/intel_sys_slam` 
 
 ```bash
 cd ~/intel_sys_slam && git status --short && git pull
+# One image for everything now: make the slam-chain image the latest, drop the old .env.
+docker tag intel-sys-rover:slam intel-sys-rover:latest && rm -f .env
 # Build the workspace on the current image, so steps 1-3 run today's code:
-docker run --rm -v ~/intel_sys_slam:/workspaces/intel_sys intel-sys-rover:slam bash /workspaces/intel_sys/scripts/run_tests.sh 2>&1 | tail -12
+docker run --rm -v ~/intel_sys_slam:/workspaces/intel_sys intel-sys-rover:latest bash /workspaces/intel_sys/scripts/run_tests.sh 2>&1 | tail -12
 df -h /                                            # the image build needs about 20 GB free
-nohup env DOCKER_BUILDKIT=1 docker build --network host --progress=plain -f Dockerfile.rover -t intel-sys-rover:slam . > ~/build_slam_image.log 2>&1 &
+nohup env DOCKER_BUILDKIT=1 docker build --network host --progress=plain -f Dockerfile.rover -t intel-sys-rover:latest . > ~/build_image.log 2>&1 &
 ```
 
 On the current image the tour planner's tests fail (no `scipy`); everything else should pass. The new image adds `twist_mux` (who drives, e-stop) and `scipy`. **Steps 1–3 work on the current image** while the new one builds. When it is done, rebuild the workspace in it and restart the stacks:
 
 ```bash
-tail -3 ~/build_slam_image.log
-docker run --rm -v ~/intel_sys_slam:/workspaces/intel_sys intel-sys-rover:slam bash /workspaces/intel_sys/scripts/run_tests.sh 2>&1 | tail -12
+tail -3 ~/build_image.log
+docker run --rm -v ~/intel_sys_slam:/workspaces/intel_sys intel-sys-rover:latest bash /workspaces/intel_sys/scripts/run_tests.sh 2>&1 | tail -12
 scripts/robot.sh down && scripts/robot.sh up
 ```
 

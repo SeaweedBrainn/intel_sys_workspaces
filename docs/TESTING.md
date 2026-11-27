@@ -15,7 +15,7 @@
 scripts/preflight.sh
 ```
 
-Runs on the Jetson host, not in a container. Each check prints PASS, FAIL or SKIP; a SKIP means a device is offline (for example the LiDAR), not broken. It exits nonzero only on FAIL. It checks that `/dev/rrc` resolves to a character device, that the robot image exists (`ROBOT_IMAGE` from `.env`, else `intel-sys-rover:latest`), free disk (at least `MIN_FREE_GB`, default 10), LiDAR reachability, the RealSense on USB, `/dev/video*`, and clock sync.
+Runs on the Jetson host, not in a container. Each check prints PASS, FAIL or SKIP; a SKIP means a device is offline (for example the LiDAR), not broken. It exits nonzero only on FAIL. It checks that `/dev/rrc` resolves to a character device, that the robot image (`intel-sys-rover:latest`) exists, free disk (at least `MIN_FREE_GB`, default 10), LiDAR reachability, the RealSense on USB, `/dev/video*`, and clock sync.
 
 ## Build and unit tests
 

@@ -18,7 +18,7 @@
 # hardware, and nothing can write to the workspace.
 
 x-robot: &robot
-  image: ${ROBOT_IMAGE:-intel-sys-rover:latest}
+  image: intel-sys-rover:latest
   network_mode: host
   ipc: host
   env_file:

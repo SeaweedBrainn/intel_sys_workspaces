@@ -5,8 +5,6 @@
 set -uo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-# The image scripts/robot.sh runs: ROBOT_IMAGE from the repo's .env, else :latest.
-[[ -z "${IMAGE:-}" && -f "$(dirname "${BASH_SOURCE[0]}")/../.env" ]] && IMAGE="$(sed -n 's/^ROBOT_IMAGE=//p' "$(dirname "${BASH_SOURCE[0]}")/../.env" | tail -1)"
 IMAGE="${IMAGE:-intel-sys-rover:latest}"
 LIDAR_IP="${LIDAR_IP:-192.168.1.2}"
 MIN_FREE_GB="${MIN_FREE_GB:-10}"

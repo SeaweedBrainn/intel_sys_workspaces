@@ -47,7 +47,7 @@ Open:
 
 ## On the robot with the camera (2026-11-24)
 
-D435i on USB 3 as the `camera` service (640×480, 15 fps), RTAB-Map with `SLAM_CAMERA=true` (commit `96ab7fc`), new map, driven by hand from the dashboard. No bag was recorded. Closures were logged from `/rtabmap/info` to `data/closures_20261124.log` on the robot.
+D435i on USB 3 as the `camera` service (640×480, 15 fps), RTAB-Map with `SLAM_CAMERA=true` (commit `4672d01`), new map, driven by hand from the dashboard. No bag was recorded. Closures were logged from `/rtabmap/info` to `data/closures_20261124.log` on the robot.
 
 | Test | Result |
 |---|---|
@@ -101,7 +101,7 @@ On the bags the input model diverged intermittently (same bag and settings: 1 of
 
 ## Alternatives tried and dropped
 
-- **RTAB-Map `icp_odometry` instead of Point-LIO.** Agreed with Point-LIO on the smooth bags (29.1 vs 28.5 m, 23.8 vs 23.2 m) but jittered frame to frame; failed on the dome-up bag and the hallway (128 and 760 impossible jumps; overshoots and resets in long corridors) and registered no forward motion in the sim corridor. Removed (the launch option lived in commit `87bd022`).
+- **RTAB-Map `icp_odometry` instead of Point-LIO.** Agreed with Point-LIO on the smooth bags (29.1 vs 28.5 m, 23.8 vs 23.2 m) but jittered frame to frame; failed on the dome-up bag and the hallway (128 and 760 impossible jumps; overshoots and resets in long corridors) and registered no forward motion in the sim corridor. Removed (the launch option lived in commit `27985db`).
 - **Visual-only RTAB-Map (D435).** Visual odometry lost track on 84–88% of frames with defaults and 37% with reset-on-loss and optical flow, jumping at every reset. It did find 7 visual loop closures on the dome-up bag, so place recognition works; the camera stays in as RTAB-Map input (Phase 8), not as odometry.
 
 ## Fixed along the way

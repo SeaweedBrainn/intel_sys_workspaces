@@ -9,6 +9,8 @@
 | Zenoh restart and heavy-traffic checks | robot | `scripts/eval/zenoh/zenoh_check.sh` |
 | On the robot | robot | [ROBOT_TEST_DAY.md](ROBOT_TEST_DAY.md) |
 
+**Repeated sim or bag runs:** kill every ROS process in the container between runs and check none are left; stale nodes corrupt the next run's `/odom`. Run `pkill` as `docker exec <container> pkill -f <pattern>`: inside `bash -c "..."` the pattern also matches that shell's own command line and kills it.
+
 ## Preflight
 
 ```bash

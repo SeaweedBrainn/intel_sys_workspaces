@@ -1,6 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <robot name="intel_sys_robot" xmlns:xacro="http://ros.org/wiki/xacro">
 
+  <!-- No colons in comments in this file. robot_description goes through a YAML parse
+       and a colon in a comment breaks it. -->
+
   <!-- ==================== MATERIALS ==================== -->
   <material name="black">
     <color rgba="0.1 0.1 0.1 1.0"/>

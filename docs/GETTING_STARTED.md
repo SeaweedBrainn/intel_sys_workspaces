@@ -96,9 +96,23 @@ scripts/robot.sh stop <service>        # stop one stack; scripts/robot.sh down s
 
 Foxglove's Diagnostics panel shows `robot_health`: stream rates and freshness, and the `odom` and `map` transforms.
 
+## Conventions
+
+- **The front is the sensor side.** `+x`, `/cmd_vel` forward and teleop forward point toward the L2 and the D435. The STM32's own convention is the opposite; `forward_is_sensor_side` in `stm32.launch.py` handles it in `mecanum_controller` and `odom_publisher`. The rear is blind: only the half the sensors face is seen.
+- **Who owns which transform.** Point-LIO (through its frame adapter) owns `odom→base_footprint`, planar; RTAB-Map owns `map→odom`. Nothing else publishes those transforms.
+- **Wheel odometry is integrated from commanded speeds**, not encoders. Don't treat it as ground truth; nothing fuses it.
+- **The URDF's sensor mounts are estimates** until the mechanical team sends measured values. Read mounts from TF rather than hard-coding them.
+
+## Working on the code
+
+- **Where changes happen.** Develop on a laptop, push to GitHub, and `git pull` on the Jetson. Teammates sometimes edit and commit directly on the Jetson: don't edit the same files in both places, and never commit or discard someone else's uncommitted work there.
+- **The repo is public:** no tokens, IP addresses or personal details in commits.
+- **Settings with a story.** Several settings look arbitrary but were paid for; the comment next to each says why. Read it before changing one (Point-LIO in `point_lio.yaml`, RTAB-Map in `rtabmap.yaml` and `slam.launch.py`, Nav2 in `nav2_params.yaml`).
+
 ## Known gotchas
 
 - **A plain shell's `ros2` sees nothing.** The stacks use Zenoh; run `ros2` through `scripts/robot.sh ros2 ...` or `docker exec <container> ...`.
-- **The front is the sensor side, and the rear is blind.** `+vx` (teleop "forward") drives toward the L2 and the D435 (`forward_is_sensor_side` in `stm32.launch.py`). Only the half the sensors face is seen.
 - **Mecanum watchdog warnings.** With nothing driving, the controller logs "cmd_vel stale … wheels commanded to zero" about every two seconds. That is the safety watchdog working.
+- **RTAB-Map takes every parameter as a string.** From a launch file, pass them as `ParameterValue(..., value_type=str)`, or it crashes on bools.
+- **No colons in URDF/xacro comments.** `robot_description` goes through a YAML parse and breaks on them.
 - **Zenoh restarts.** Subscribers don't always re-match after a publisher restarts (see the roadmap). If a stack goes quiet after restarting another, restart the quiet one.

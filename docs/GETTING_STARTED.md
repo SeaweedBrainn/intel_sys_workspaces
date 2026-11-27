@@ -64,25 +64,28 @@ Everything runs in Docker with ROS 2 Humble and `rmw_zenoh_cpp`; a `zenohd` rout
 
 ## Daily bring-up
 
-Each stack is a compose service in `docker-compose.robot.yml`, driven by `scripts/robot.sh`:
+Each stack is a compose service in `docker-compose.robot.yml`, driven by `scripts/robot.sh`. There are two modes; start either with the robot standing still:
 
 ```bash
-scripts/robot.sh up                 # Zenoh router, STM32 stack, LiDAR and camera drivers, robot description, health
-scripts/robot.sh up foxglove        # Foxglove bridge on the Tailscale address, port 8765 (docs/FOXGLOVE.md)
-scripts/robot.sh up localization    # Point-LIO + RTAB-Map, mapping a new map
-scripts/robot.sh up navigation      # also Nav2 on RTAB-Map's map, and the explorer (idle until started)
+scripts/robot.sh up             # map and explore: drivers, health, Foxglove, Point-LIO, RTAB-Map, Nav2, explorer
+scripts/robot.sh up follow      # follow a tag: drivers, health, Foxglove, Point-LIO, Nav2 in odom, follower
+scripts/robot.sh up drivers     # drivers, health and Foxglove only (teleop, recording, sensor checks)
 ```
 
-Start localization with the robot standing still. The drivers, the robot description and health restart on their own after a crash or a reboot. Localization and navigation don't: a restart re-anchors odometry wherever the robot is, and a mapping restart starts a new map. `scripts/robot.sh up navigation` starts localization if it isn't running and never restarts a running one.
+Foxglove comes up with every command, on the robot's Tailscale address, port 8765 ([FOXGLOVE.md](FOXGLOVE.md)).
 
-**Maps.** The database is `data/rtabmap.db`. Each new mapping session keeps the previous map as `data/rtabmap_<date>.db`.
-- `SLAM_LOCALIZATION=true scripts/robot.sh up localization` re-localizes on the saved map instead of mapping.
+**Switching modes** is one command: `up follow` while mapping (or `up` while following) stops the other mode's stacks and starts this one's. Point-LIO restarts with it, so odometry starts fresh from where the robot stands. Running `up` again in the same mode changes nothing that is running. To restart mapping with other options, `scripts/robot.sh stop localization`, then `up` with the new options.
+
+After a crash or a reboot the drivers, the robot description, health and Foxglove come back on their own. The mode's stacks don't: a restart re-anchors odometry wherever the robot is, and a mapping restart starts a new map.
+
+**Maps.** The database is `data/rtabmap.db`. Each new mapping session keeps the previous map as `data/rtabmap_<date>.db`. Options for `up`:
+- `SLAM_LOCALIZATION=true` re-localizes on the saved map instead of mapping.
 - `SLAM_CONTINUE=true` keeps mapping into the saved map; the new session joins it once the camera recognizes a place.
-- RTAB-Map uses the camera as well as the LiDAR by default and waits for camera frames, so `up localization` refuses to start unless `/camera/camera_info` is publishing. `SLAM_CAMERA=false` runs it on the LiDAR alone. A map made without the camera has no visual words, so map again before relying on the camera to re-localize.
+- `SLAM_CAMERA=false` runs RTAB-Map on the LiDAR alone. By default it uses the camera too and waits for its frames, so `up` stops with an error if the camera isn't publishing. A map made without the camera has no visual words, so map again before relying on the camera to re-localize.
 
-**Exploration.** With `up navigation`, press **Explore: START** in Foxglove. The explorer drives to frontiers until nothing is left, then drives home.
+**Exploration** (`up`): press **Explore: START** in Foxglove. The explorer drives to frontiers until nothing is left, then drives home.
 
-**Tag following** (ArUco 5×5, id 10, 6.5 in): `scripts/robot.sh up follow` runs Point-LIO and Nav2 without RTAB-Map (planning in `odom` on the live LiDAR) plus `tag_follower`; stop a running mapping session first (`scripts/robot.sh stop explorer navigation localization`). Following is off until **Follow tag: ON** in Foxglove (or `ros2 service call /tag_follower/enable std_srvs/srv/SetBool "{data: true}"`); losing the tag for 3 s stops it.
+**Tag following** (`up follow`; ArUco 5×5, id 10, 6.5 in): Nav2 plans in `odom` on the live LiDAR only, without RTAB-Map, so a person who pauses never becomes a stored obstacle. Following is off until **Follow tag: ON** in Foxglove; losing the tag for 3 s stops it.
 
 Also useful:
 
@@ -91,7 +94,7 @@ scripts/robot.sh ps                    # what's running
 scripts/robot.sh logs -f lidar         # follow one stack's log
 scripts/robot.sh ros2 topic hz /odom   # the ros2 CLI on the robot's middleware
 scripts/record_bag.sh <name>           # record into bags/ until Ctrl-C
-scripts/robot.sh stop <service>        # stop one stack; scripts/robot.sh down stops everything
+scripts/robot.sh down                  # stop everything
 ```
 
 Foxglove's Diagnostics panel shows `robot_health`: stream rates and freshness, and the `odom` and `map` transforms.

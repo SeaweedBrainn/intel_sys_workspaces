@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Follow an ArUco tag with Nav2: stay standoff metres from it, facing it.
 
-Each detection in the colour image (intel_sys_navigation.tag) is placed in the map frame
-through TF; the goal is the point standoff metres short of the tag on the line from the
+Each detection in the colour image (intel_sys_navigation.tag) is placed in map_frame (odom:
+following runs without RTAB-Map, see follow.launch.py) through TF; the goal is the point standoff metres short of the tag on the line from the
 robot (intel_sys_navigation.follow). The first goal starts a navigate_to_pose action with
 the follow_tag.xml behaviour tree; later goals go to /goal_update, which that tree reads,
 so Nav2 keeps re-planning around obstacles as the tag moves.
@@ -12,7 +12,7 @@ Off until enabled:
 Disabling, or losing the tag for lost_timeout seconds, cancels the goal and the robot stops;
 it starts again when the tag is seen while enabled.
 
-Publishes ~/tag_pose and ~/goal (map frame) for Foxglove.
+Publishes ~/tag_pose and ~/goal (in map_frame) for Foxglove.
 """
 import math
 import os
@@ -59,7 +59,8 @@ class TagFollower(Node):
         self.standoff = p('standoff', 0.457).value          # 18 in
         self.lost_timeout = p('lost_timeout', 3.0).value
         self.max_range = p('max_range', 4.0).value          # ignore farther detections
-        self.map_frame = p('map_frame', 'map').value
+        # odom: following runs without RTAB-Map (follow.launch.py), so nothing it sees is stored.
+        self.map_frame = p('map_frame', 'odom').value
         self.base_frame = p('base_frame', 'base_footprint').value
         default_bt = os.path.join(get_package_share_directory('intel_sys_navigation'),
                                   'behavior_trees', 'follow_tag.xml')

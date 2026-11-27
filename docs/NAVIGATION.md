@@ -13,7 +13,7 @@ How Nav2 is set up, how the frontier explorer chooses goals, and what has been m
 
 ## Frontier explorer
 
-`intel_sys_navigation/scripts/frontier_explorer`, with the planning in `tour.py` and `frontiers.py` (no ROS imports, unit-tested). It runs as the `explorer` service, idle until **Explore: START** in Foxglove. After FUEL (Zhou et al., RA-L 2021); built after a trial of roadmap-explorer, which mapped `loop.sdf` but never finished and had lifecycle and goal-replacement problems.
+`intel_sys_navigation/scripts/frontier_explorer`, with the planning in `tour.py` and `frontiers.py` (no ROS imports, unit-tested). It runs in the map-and-explore mode (`scripts/robot.sh up`, or the sim's default `mode:=explore`) from `launch/explore.launch.py`, idle until **Explore: START** in Foxglove. After FUEL (Zhou et al., RA-L 2021); built after a trial of roadmap-explorer, which mapped `loop.sdf` but never finished and had lifecycle and goal-replacement problems.
 
 Each time `/map` changes (about once a second):
 

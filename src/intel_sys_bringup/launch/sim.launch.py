@@ -1,9 +1,16 @@
-import os
+"""The simulated robot with the same stacks and modes as the real one (scripts/robot.sh).
+
+    mode:=explore (default)  Point-LIO, RTAB-Map, Nav2 on its map, explorer (idle until Explore)
+    mode:=follow             Point-LIO, Nav2 in odom on the live LiDAR, tag follower (off until
+                             Follow); walking_tag:=true adds a marker that walks (loop.sdf only)
+
+Switching modes means relaunching, as on the robot.
+"""
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription
 from launch.conditions import IfCondition
 from launch.launch_description_sources import PythonLaunchDescriptionSource
-from launch.substitutions import LaunchConfiguration, PathJoinSubstitution
+from launch.substitutions import LaunchConfiguration, PathJoinSubstitution, PythonExpression
 from launch_ros.actions import Node
 from launch_ros.substitutions import FindPackageShare
 
@@ -26,7 +33,16 @@ def generate_launch_description():
     slam_continue_arg = DeclareLaunchArgument('slam_continue', default_value='false',
                                               description='Keep mapping into the saved RTAB-Map database (new session)')
     database_path_arg = DeclareLaunchArgument('database_path', default_value='~/.ros/rtabmap.db', description='RTAB-Map database')
-    slam_arg = DeclareLaunchArgument('slam', default_value='true', description='Run RTAB-Map and plan on its /map')
+    mode_arg = DeclareLaunchArgument('mode', default_value='explore', choices=['explore', 'follow'],
+                                     description='explore: map and explore; follow: tag following without RTAB-Map')
+    walking_tag_arg = DeclareLaunchArgument('walking_tag', default_value='false',
+                                            description='mode:=follow in loop.sdf: spawn a marker that walks a path')
+    walking_tag_wait_arg = DeclareLaunchArgument('walking_tag_wait', default_value='30',
+                                                 description='Seconds before the marker starts walking')
+    mode = LaunchConfiguration('mode')
+    # 'true'/'false' strings: the included launch files compare against them.
+    explore = PythonExpression(["'true' if '", mode, "' == 'explore' else 'false'"])
+    follow = PythonExpression(["'true' if '", mode, "' == 'follow' else 'false'"])
     slam_camera_arg = DeclareLaunchArgument('slam_camera', default_value='false',
                                             description='RTAB-Map also uses the simulated D435 (visual loop closures)')
 
@@ -55,7 +71,7 @@ def generate_launch_description():
         PythonLaunchDescriptionSource(PathJoinSubstitution([loc_pkg, 'launch', 'localization.launch.py'])),
         launch_arguments={
             'use_sim_time': 'true',
-            'slam': LaunchConfiguration('slam'),
+            'slam': explore,
             'slam_localization': LaunchConfiguration('slam_localization'),
             'slam_continue': LaunchConfiguration('slam_continue'),
             'slam_camera': LaunchConfiguration('slam_camera'),
@@ -69,11 +85,28 @@ def generate_launch_description():
         launch_arguments={
             'use_sim_time': 'true',
             'autostart': 'true',
-            'slam': LaunchConfiguration('slam'),
+            'slam': explore,
         }.items()
     )
 
-    # 4. Foxglove Studio WebSocket Bridge
+    # 4. The mode's own node, from the same launch files the robot uses.
+    explorer_launch = IncludeLaunchDescription(
+        PythonLaunchDescriptionSource(PathJoinSubstitution([nav_pkg, 'launch', 'explore.launch.py'])),
+        launch_arguments={'use_sim_time': 'true'}.items(),
+        condition=IfCondition(explore))
+    follow_launch = IncludeLaunchDescription(
+        PythonLaunchDescriptionSource(PathJoinSubstitution([nav_pkg, 'launch', 'follow.launch.py'])),
+        launch_arguments={'use_sim_time': 'true'}.items(),
+        condition=IfCondition(follow))
+    walking_tag = Node(
+        package='intel_sys_sim',
+        executable='sim_tag_mover',
+        output='screen',
+        arguments=['--wait', LaunchConfiguration('walking_tag_wait')],
+        condition=IfCondition(PythonExpression(
+            ["'true' if '", mode, "' == 'follow' and '", LaunchConfiguration('walking_tag'), "' == 'true' else 'false'"])))
+
+    # 5. Foxglove Studio WebSocket Bridge
     foxglove_bridge_node = Node(
         package='foxglove_bridge',
         executable='foxglove_bridge',
@@ -96,7 +129,9 @@ def generate_launch_description():
         z_arg,
         yaw_arg,
         world_arg,
-        slam_arg,
+        mode_arg,
+        walking_tag_arg,
+        walking_tag_wait_arg,
         slam_camera_arg,
         slam_localization_arg,
         slam_continue_arg,
@@ -105,5 +140,8 @@ def generate_launch_description():
         cmd_vel_mux,
         localization_launch,
         navigation_launch,
+        explorer_launch,
+        follow_launch,
+        walking_tag,
         foxglove_bridge_node
     ])

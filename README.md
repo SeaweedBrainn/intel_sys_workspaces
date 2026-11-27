@@ -42,9 +42,10 @@ On a laptop (simulation):
 On the robot:
 
 ```bash
-scripts/robot.sh up                  # Zenoh router, STM32, LiDAR, camera, robot description, health
-scripts/robot.sh up foxglove         # the UI, on the Tailscale address, port 8765
-scripts/robot.sh up navigation       # Point-LIO + RTAB-Map + Nav2 + explorer, robot standing still
+scripts/robot.sh up                  # drivers, Foxglove, mapping and exploring (robot standing still)
+scripts/robot.sh up follow           # or: tag following
 ```
+
+In the sim, `sim.launch.py` takes the same modes: `mode:=explore` (default) or `mode:=follow`.
 
 The front of the robot is the sensor side: `+x` and teleop "forward" drive toward the LiDAR and camera.

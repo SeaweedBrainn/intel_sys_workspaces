@@ -9,7 +9,7 @@ and Point-LIO's /odom is compared with it on every leg.
 Start the sim first, e.g. in the south corridor of loop.sdf:
 
     ros2 launch intel_sys_bringup sim.launch.py headless:=true use_foxglove:=false \
-        world:=loop.sdf x:=-6.0 y:=-3.5 slam:=false
+        world:=loop.sdf x:=-6.0 y:=-3.5 mode:=follow   # Point-LIO without RTAB-Map
 
     python3 scripts/eval/lio_drift_test.py --length 12 --legs 4
 

@@ -131,7 +131,7 @@
       "layout": "vertical",
       "buttonText": "Explore: START",
       "buttonColor": "#1565c0",
-      "buttonTooltip": "Frontier exploration on RTAB-Map's map (scripts/robot.sh up navigation)",
+      "buttonTooltip": "Frontier exploration on RTAB-Map's map (scripts/robot.sh up)",
       "editingMode": false
     },
     "CallService!exploreStop": {

@@ -1,16 +1,14 @@
 # The robot's stacks as compose services, one launch file each, on the Jetson, plus the
 # Zenoh router they all talk through. Use it through scripts/robot.sh:
 #
-#   scripts/robot.sh up                    # drivers, robot description and health
-#   scripts/robot.sh up localization       # + Point-LIO and RTAB-Map (mapping)
-#   scripts/robot.sh up navigation         # + Nav2 on RTAB-Map's /map
-#   scripts/robot.sh up foxglove           # Foxglove bridge on the Tailscale address, port 8765
-#   scripts/robot.sh ps | logs -f <service> | stop <service> | down
+#   scripts/robot.sh up            # drivers, health, Foxglove + mapping and exploring (profile explore)
+#   scripts/robot.sh up follow     # drivers, health, Foxglove + tag following (profile follow)
+#   scripts/robot.sh up drivers    # drivers, health and Foxglove only
 #
-# Drivers, the robot description and health restart on their own after a crash or reboot.
-# Localization and navigation do not: a Point-LIO restart re-anchors odometry
-# wherever the robot is, and a mapping restart wipes the map, so they are started
-# deliberately for each session.
+# Drivers, the robot description, health and Foxglove restart on their own after a crash
+# or reboot. The autonomy stacks do not: a Point-LIO restart re-anchors odometry wherever
+# the robot is, and a mapping restart starts a new map, so they are started deliberately
+# for each session.
 #
 # Least privilege: only the STM32 stack gets privileged /dev access (the board can
 # re-enumerate as a different ttyACM). The LiDAR is on Ethernet. The camera gets the
@@ -101,7 +99,7 @@ services:
       slam_localization:=${SLAM_LOCALIZATION:-false}
       slam_continue:=${SLAM_CONTINUE:-false}
       slam_camera:=${SLAM_CAMERA:-true}
-    profiles: [localization, navigation, follow]
+    profiles: [explore, follow]
     restart: "no"
     stop_grace_period: 60s   # RTAB-Map writes the map database on shutdown
 
@@ -113,7 +111,7 @@ services:
       - localization
     # With SLAM=false Nav2 plans in odom on the live LiDAR only (no stored map).
     command: ros2 launch intel_sys_navigation navigation.launch.py slam:=${SLAM:-true}
-    profiles: [navigation, follow]
+    profiles: [explore, follow]
     restart: "no"
 
   # Frontier exploration, idle until /frontier_explorer/start (Foxglove's Explore button).
@@ -123,8 +121,8 @@ services:
     depends_on:
       - zenohd
       - navigation
-    command: ros2 run intel_sys_navigation frontier_explorer --ros-args -p wait_for_start:=true
-    profiles: [navigation]
+    command: ros2 launch intel_sys_navigation explore.launch.py
+    profiles: [explore]
     restart: "no"
 
   follow:
@@ -133,25 +131,23 @@ services:
     depends_on:
       - zenohd
       - navigation
-    # Tag following through Nav2, in odom: a target that pauses must not end up in a stored
-    # map (RTAB-Map would keep it as an obstacle). Off until enabled:
-    #   ros2 service call /tag_follower/enable std_srvs/srv/SetBool "{data: true}"
-    # (or the service call panel in Foxglove). scripts/robot.sh up follow starts it.
-    command: ros2 run intel_sys_navigation tag_follower --ros-args -p map_frame:=odom
+    # Tag following through Nav2, in odom without RTAB-Map (scripts/robot.sh up follow sets
+    # SLAM=false): a target that pauses must not end up in a stored map. Off until Foxglove's
+    # Follow tag button (/tag_follower/enable).
+    command: ros2 launch intel_sys_navigation follow.launch.py
     profiles: [follow]
     restart: "no"
 
   foxglove:
     <<: *robot
     container_name: foxglove
-    # scripts/robot.sh up foxglove binds it to the Tailscale address. Clients can
-    # publish (e.g. Nav2 goals), so it is not left on every interface.
+    # scripts/robot.sh binds it to the Tailscale address. Clients can publish (e.g. Nav2
+    # goals), so it is not left on every interface.
     command: >
       ros2 run foxglove_bridge foxglove_bridge --ros-args
       -p address:=${FOXGLOVE_ADDRESS:-127.0.0.1} -p port:=8765
       -p send_buffer_limit:=100000000
-    profiles: [foxglove]
-    restart: "no"
+    restart: unless-stopped
 
   # Stream and transform health on /diagnostics, for Foxglove's Diagnostics panel.
   health:

@@ -5,7 +5,7 @@
 | Preflight: serial, image, disk, LiDAR, camera, clock | Jetson host | `scripts/preflight.sh` |
 | Build and unit tests | container | `./run_docker.sh bash scripts/run_tests.sh` |
 | Localization on recorded bags | container | `scripts/eval/run_lio_on_bag.sh`, `scripts/eval/run_slam_on_bag.sh` |
-| Sim runs (localization, navigation, exploration) | container | `ros2 launch intel_sys_bringup sim.launch.py` ([ROADMAP.md](ROADMAP.md) has the worlds and results) |
+| Sim runs (localization, navigation, exploration, following) | container | `ros2 launch intel_sys_bringup sim.launch.py world:=office.sdf x:=-9.5`; following: `world:=loop.sdf x:=-6.5 yaw:=1.5708 mode:=follow walking_tag:=true` ([NAVIGATION.md](NAVIGATION.md) has results) |
 | Zenoh restart and heavy-traffic checks | robot | `scripts/eval/zenoh/zenoh_check.sh` |
 | On the robot | robot | [ROBOT_TEST_DAY.md](ROBOT_TEST_DAY.md) |
 

@@ -14,7 +14,7 @@ All in `scripts/eval/`, run inside `intel-sys-sim` with the workspace built.
 | `run_slam_on_bag.sh` | Point-LIO + RTAB-Map on a bag, optionally with the D435 (`CAMERA=1`) |
 | `bag_mount_check.py` | L2 mount roll and pitch from a bag's IMU gravity |
 
-Start the sim for the first two with `ros2 launch intel_sys_bringup sim.launch.py headless:=true use_foxglove:=false world:=loop.sdf x:=-6.5 y:=0.0` (`x:=-6.0 y:=-3.5 slam:=false` for the drift test). `point_lio_params:=<yaml>` swaps the Point-LIO config.
+Start the sim for the first two with `ros2 launch intel_sys_bringup sim.launch.py headless:=true use_foxglove:=false world:=loop.sdf x:=-6.5 y:=0.0` (`x:=-6.0 y:=-3.5 mode:=follow` for the drift test: Point-LIO without RTAB-Map). `point_lio_params:=<yaml>` swaps the Point-LIO config.
 
 **Between repeated runs, kill every ROS process in the container and check none are left.** `kill -INT` on a scripted `ros2 launch` did not stop its nodes; a stale `point_lio_frame_adapter`, anchored on an earlier run's start, corrupted `/odom` in later runs and made every config look diverged.
 

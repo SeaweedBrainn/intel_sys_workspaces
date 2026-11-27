@@ -33,7 +33,7 @@ scripts/robot.sh down && scripts/robot.sh up
 The two open Zenoh bugs (subscribers that stop receiving after a restart; a costmap that goes deaf under heavy traffic) don't happen on x86 with this rmw_zenoh. This runs the same checks on the Jetson, on a private router (port 7457), without touching the running stacks:
 
 ```bash
-scripts/robot.sh up
+scripts/robot.sh up drivers
 docker exec -it stm32stack bash /workspaces/intel_sys/scripts/eval/zenoh/zenoh_check.sh
 ```
 
@@ -47,7 +47,6 @@ docker exec -it stm32stack bash /workspaces/intel_sys/scripts/eval/zenoh/zenoh_c
 
 ```bash
 scripts/robot.sh logs stm32 | grep -E "twist_mux|relay|Front"
-scripts/robot.sh up foxglove
 ```
 
 Import `src/intel_sys_bringup/config/foxglove_layout.json` again (it changed: E-STOP/RELEASE buttons, teleop now on `/cmd_vel_teleop`, wider right column).
@@ -63,11 +62,11 @@ Import `src/intel_sys_bringup/config/foxglove_layout.json` again (it changed: E-
 The 12° heading drift has never been recorded. Record LiDAR and IMU on every drive today:
 
 ```bash
-scripts/robot.sh up localization
+scripts/robot.sh up                  # mapping, with the camera
 scripts/record_bag.sh drift_loop     # Ctrl-C to stop; LiDAR, IMU, camera, odometry
 ```
 
-Drive a loop of 15–20 m that ends on a floor mark, twice: once with the camera running, once with `scripts/robot.sh stop camera` (and `SLAM_CAMERA=false scripts/robot.sh up localization`).
+Drive a loop of 15–20 m that ends on a floor mark, twice: once with the camera running, once without it (`scripts/robot.sh stop localization camera`, then `SLAM_CAMERA=false scripts/robot.sh up`).
 
 - [ ] Loop with camera: Point-LIO end error ____ cm, heading ____°; RTAB-Map closures ____.
 - [ ] Loop without camera: ____ cm, ____°.
@@ -81,19 +80,20 @@ The bag recorder takes every topic, including the camera's colour and depth imag
 On a saved map, without the camera, RTAB-Map assumes the robot starts at the map's origin. Foxglove's 3D panel can now tell it otherwise (checked in the sim: 0.6 m from the truth, then refined against the map).
 
 ```bash
-SLAM_CAMERA=false SLAM_LOCALIZATION=true scripts/robot.sh up localization
+scripts/robot.sh stop localization
+SLAM_CAMERA=false SLAM_LOCALIZATION=true scripts/robot.sh up
 ```
 
 Start the robot a few metres from where the map was started. In the 3D panel, choose **Publish pose estimate** in the toolbar (top right), click where the robot is on the drawn map and drag toward where it faces.
 
 - [ ] The live LiDAR points jump onto the map's walls and stay there while driving.
-- [ ] With the camera on (`SLAM_LOCALIZATION=true scripts/robot.sh up localization`), from somewhere other than the origin: does RTAB-Map place the robot by itself? ____
-- [ ] **Keep mapping on the saved map** (the normal mode for the URC rover; new, not tried in the sim): `SLAM_CONTINUE=true scripts/robot.sh up localization`, camera on. Start somewhere already mapped and drive into new space. The new session should join the old map once the camera recognizes a place (the map stops being two separate pieces), and the database keeps both.
+- [ ] With the camera on (`scripts/robot.sh stop localization`, then `SLAM_LOCALIZATION=true scripts/robot.sh up`), from somewhere other than the origin: does RTAB-Map place the robot by itself? ____
+- [ ] **Keep mapping on the saved map** (the normal mode for the URC rover; new, not tried in the sim): `scripts/robot.sh stop localization`, then `SLAM_CONTINUE=true scripts/robot.sh up`, camera on. Start somewhere already mapped and drive into new space. The new session should join the old map once the camera recognizes a place (the map stops being two separate pieces), and the database keeps both.
 
 ## 5. Navigation basics (20 minutes, someone at the physical stop)
 
 ```bash
-scripts/robot.sh up navigation
+scripts/robot.sh up        # Nav2 and the explorer are already up from step 4; this changes nothing running
 ```
 
 - [ ] A Nav2 goal from the 3D panel (**Publish pose**) is reached and the robot stops (general goal checker).
@@ -130,8 +130,7 @@ If the robot wedges against a door jamb or corner and Nav2 reports "Failed to ma
 ## 7. Tag following (15 minutes, camera on)
 
 ```bash
-scripts/robot.sh stop explorer navigation localization   # following runs without RTAB-Map
-scripts/robot.sh up follow
+scripts/robot.sh up follow   # stops mapping and exploring, starts following (no RTAB-Map)
 ```
 
 Foxglove **Follow tag: ON**, walk slowly with the marker.
@@ -142,7 +141,7 @@ Foxglove **Follow tag: ON**, walk slowly with the marker.
 ## 8. Wrap up
 
 ```bash
-scripts/robot.sh stop navigation localization foxglove follow explorer
+scripts/robot.sh down
 ```
 
 Copy today's bags and the RTAB-Map database to the laptop, and write the numbers into [ROADMAP.md](ROADMAP.md).

@@ -5,7 +5,7 @@
 #   scripts/record_bag.sh loop_test --all    # also Point-LIO and RTAB-Map outputs
 #
 # Runs in a one-off container on the rover image with the Zenoh settings, so it
-# sees the robot's stacks. The drivers must be running (scripts/robot.sh up).
+# sees the robot's stacks. The drivers must be running (scripts/robot.sh up drivers, or any mode).
 set -euo pipefail
 cd "$(dirname "$0")/.."
 NAME="${1:?usage: $0 <name> [--all]}"

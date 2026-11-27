@@ -6,9 +6,11 @@ direction of travel, so a robot following behind sees it; the
 stand is visible to the LiDAR, so it is an obstacle in the costmaps too.
 
     ros2 run intel_sys_sim sim_tag_mover --world intel_sys_loop --speed 0.12 \
-        --path -6.5,1.5 -6.5,3.5 4.0,3.5
+        --path=-6.5,1.5;-6.5,3.5;4.0,3.5
 
-Coordinates are Gazebo world metres. It pauses --wait seconds at the start, then moves.
+Coordinates are Gazebo world metres, x,y points separated by ';' (one argument with '=',
+so negative numbers aren't read as options). The default path suits loop.sdf with the robot
+spawned at -6.5,0 facing north (sim.launch.py mode:=follow walking_tag:=true does this). It pauses --wait seconds at the start, then moves.
 """
 import argparse
 import math
@@ -81,9 +83,9 @@ def main():
     ap.add_argument('--speed', type=float, default=0.12, help='m/s')
     ap.add_argument('--wait', type=float, default=10.0, help='s before moving')
     ap.add_argument('--rate', type=float, default=5.0, help='pose updates per second')
-    ap.add_argument('--path', nargs='+', default=['-6.5,1.5', '-6.5,3.5', '4.0,3.5'])
+    ap.add_argument('--path', default='-6.5,1.5;-6.5,3.5;4.0,3.5', help='x,y;x,y;... in metres')
     args = ap.parse_args(rclpy_args_free(sys.argv[1:]))
-    pts = [tuple(float(v) for v in p.split(',')) for p in args.path]
+    pts = [tuple(float(v) for v in p.split(',')) for p in args.path.split(';')]
 
     model = os.path.join(tempfile.gettempdir(), 'follow_tag.sdf')
     with open(model, 'w') as f:

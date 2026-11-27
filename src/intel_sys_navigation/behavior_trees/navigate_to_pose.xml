@@ -1,8 +1,11 @@
 
 <!--
-  Nav2's navigate_to_pose_w_replanning_and_recovery.xml (Humble) without the BackUp
-  recovery: nothing sees behind the robot (the L2 and the D435 both face +x), so it
-  must not reverse blind. Recoveries are clearing the costmaps, Spin and Wait.
+  Nav2's navigate_to_pose_w_replanning_and_recovery.xml (Humble) with a shorter, slower
+  back-up: 0.15 m at 0.05 m/s (Nav2's default is 0.30 m). Nothing sees behind the robot
+  (the L2 and the D435 both face +x), so normal driving never reverses (DWB min_vel_x 0);
+  backing up is only a recovery, into space the robot usually just drove through, checked
+  against the local costmap's memory. It frees the robot from a door jamb or corner it is
+  wedged against, which clearing, spinning and waiting can't (sim, 2026-11-26).
 -->
 <root main_tree_to_execute="MainTree">
   <BehaviorTree ID="MainTree">
@@ -28,6 +31,7 @@
           </Sequence>
           <Spin spin_dist="1.57"/>
           <Wait wait_duration="5"/>
+          <BackUp backup_dist="0.15" backup_speed="0.05"/>
         </RoundRobin>
       </ReactiveFallback>
     </RecoveryNode>

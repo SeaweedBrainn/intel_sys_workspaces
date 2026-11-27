@@ -125,7 +125,7 @@ Press **Explore: START** in Foxglove in a space with a few rooms or corridors.
 
 If it zig-zags or flips between goals, note where; `min_new_area` (2 m², smallest view worth a trip), `switch_hysteresis` (0.15), `goal_max_cost` (30, how far goals keep from walls) and `chunk_radius` (1.5 m) are the settings to look at.
 
-If the robot wedges against a door jamb or corner and Nav2 reports "Failed to make progress" over and over, note it: with reversing disabled, Nav2's recoveries (clear costmaps, spin, wait) can't back it out. That decides whether a short, slow, checked reverse is worth allowing.
+If the robot wedges against a door jamb or corner, Nav2's recoveries now end with a 0.15 m back-up at 0.05 m/s (new, sim only). Note whether it frees the robot, and watch that it doesn't back into anything: nothing sees behind the robot.
 
 ## 7. Tag following (15 minutes, camera on)
 

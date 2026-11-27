@@ -40,16 +40,33 @@ def slam_overlay(params):
     return params
 
 
+def follow_overlay(params):
+    """Following (no RTAB-Map, everything in odom): forget unseen obstacles within 1.5 s.
+
+    The target is an obstacle that moves, and the robot drives along its path. With the
+    normal memory (5 s local, 20 s global) each spot the target stood on stayed lethal: the
+    follow goal, 0.46 m short of the target, landed on that trail, and NavFn found a plan
+    only some of the time (loop.sdf, 2026-11-27). The LiDAR doesn't sweep the low patch
+    right in front of the robot, so decay_acceleration doesn't clear it. The long memory
+    stays for mapping and exploring, where it keeps a box the robot turned away from.
+    """
+    for costmap in ('local_costmap', 'global_costmap'):
+        params[costmap][costmap]['ros__parameters']['stvl_layer']['voxel_decay'] = 1.5
+    return params
+
+
 def make_nav2(context):
     with open(LaunchConfiguration('params_file').perform(context)) as f:
         params = yaml.safe_load(f)
-    # Our behavior tree: Nav2's default without the BackUp recovery (see the XML).
+    # Our behavior tree: Nav2's default with a shorter, slower back-up (see the XML).
     # The path is only known at launch time, so it can't live in the YAML.
     bt_xml = os.path.join(FindPackageShare('intel_sys_navigation').perform(context),
-                          'behavior_trees', 'navigate_to_pose_no_backup.xml')
+                          'behavior_trees', 'navigate_to_pose.xml')
     params['bt_navigator']['ros__parameters']['default_nav_to_pose_bt_xml'] = bt_xml
     if LaunchConfiguration('slam').perform(context) == 'true':
         params = slam_overlay(params)
+    else:
+        params = follow_overlay(params)
     fd, params_file = tempfile.mkstemp(prefix='nav2_params_', suffix='.yaml')
     with os.fdopen(fd, 'w') as f:
         yaml.safe_dump(params, f)

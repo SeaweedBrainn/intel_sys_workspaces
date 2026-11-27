@@ -23,3 +23,6 @@ results/*
 
 # Robot runtime data (RTAB-Map database)
 data/
+
+# Local settings, e.g. ROBOT_IMAGE (see scripts/robot.sh)
+.env

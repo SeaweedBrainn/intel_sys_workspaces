@@ -1,10 +1,10 @@
 # Robot test day: everything built in the sim since 2026-11-24
 
-A checklist to work through on the rover in one session, fastest and most basic first. Everything here has run in the sim or on recorded bags, not on the robot ([ROADMAP.md](ROADMAP.md) "To test on the robot"). Each step says what proves it and what to do if it fails. Tick the boxes and write numbers next to them; they go into the roadmap afterwards.
+A checklist to work through on the rover in one session, fastest and most basic first. Everything here has run in the sim or on recorded bags, not on the robot ([ROADMAP.md](ROADMAP.md)). Each step says what proves it and what to do if it fails. Tick the boxes and write numbers next to them; they go into the roadmap afterwards.
 
 All commands run on the Jetson in the `slam-chain` worktree, `~/intel_sys_slam` (not the team's `~/intel_sys_workspaces`), unless they say otherwise.
 
-**Bring:** tape for floor marks, a tape measure, a box about 30 cm tall, an AprilTag (tag 10) on a stick, someone at the physical stop whenever the wheels touch the floor.
+**Bring:** tape for floor marks, a tape measure, a box about 30 cm tall, an ArUco marker on a stick (5×5 dictionary, id 10; the follower detects ArUco, not AprilTag), someone at the physical stop whenever the wheels touch the floor.
 
 ## 0. Update and rebuild (start first: the image build takes 30–90 minutes)
 
@@ -39,7 +39,7 @@ docker exec -it stm32stack bash /workspaces/intel_sys/scripts/eval/zenoh/zenoh_c
 - [ ] Every line reads 10 msg/s, and the heavy-traffic line 10 Hz / 12 Hz, with shared memory **on**.
 - [ ] Same with shared memory **off**.
 
-**If shared memory on fails and off passes:** that's merge step 1 (turn shared memory off in `docker/zenoh/session.json5`); it's on hold by your call, so decide then. If both fail at a restart, note which kind (SIGINT, SIGKILL or router).
+**If shared memory on fails and off passes:** turn shared memory off in `docker/zenoh/session.json5`. If both fail at a restart, note which kind (SIGINT, SIGKILL or router).
 
 ## 2. Drivers: link watchdog, who drives, e-stop (15 minutes, wheels off the floor)
 
@@ -72,7 +72,7 @@ Drive a loop of 15–20 m that ends on a floor mark, twice: once with the camera
 - [ ] Copy both bags to the laptop (`bags/`): they're the input for finding the drift.
 - [ ] **Look-alike places, camera on:** drive between two spots that look the same (two matching classrooms, both ends of a plain corridor) and back. Watch the map in Foxglove: a sudden jump or rotation of the whole map is a false visual loop closure. In the sim, look-alike grey rooms produced two (a 180° flip, and later a 9 m shift); real rooms are usually more distinctive, which is what this checks. Note any jump and record a bag of it.
 
-The bag recorder takes every topic, including the camera's 50 MB/s cloud; if Nav2 or RTAB-Map go quiet while it runs, that is the deaf-subscriber bug, so note it.
+The bag recorder takes every topic, including the camera's colour and depth images; if Nav2 or RTAB-Map go quiet while it runs, that is the deaf-subscriber bug, so note it.
 
 ## 4. Relocalization from a pose estimate (10 minutes)
 
@@ -112,8 +112,8 @@ scripts/robot.sh logs -f explorer
 
 Press **Explore: START** in Foxglove in a space with a few rooms or corridors.
 
-- [ ] The log's first line reads `Nav2 limits ... (read from controller_server)`.
-- [ ] Each goal logs `planned in N ms` (sim: median 140 ms, max 310 ms on the laptop): ____ ms on the Jetson.
+- [ ] The log's first line reads `Nav2 limits for travel times: ... (read from velocity_smoother)`.
+- [ ] Each goal logs `planned in N ms` (sim: median 120 ms, max 250 ms on the laptop): ____ ms on the Jetson.
 - [ ] Goals face unmapped space (the robot arrives looking at what's unknown).
 - [ ] It finishes by itself (`no frontiers left`) and drives back to the start.
 - [ ] **E-STOP** stops it; **Explore: STOP** cancels the goal.
@@ -128,11 +128,11 @@ If the robot wedges against a door jamb or corner and Nav2 reports "Failed to ma
 ## 7. Tag following (15 minutes, camera on)
 
 ```bash
-scripts/robot.sh stop navigation explorer
+scripts/robot.sh stop explorer navigation localization   # following runs without RTAB-Map
 scripts/robot.sh up follow
 ```
 
-Foxglove **Follow tag: ON**, walk slowly with tag 10.
+Foxglove **Follow tag: ON**, walk slowly with the marker.
 
 - [ ] It follows at about 0.5 m and stops when you stop.
 - [ ] Nothing else goes quiet while it runs (`robot_health` in the Diagnostics panel all green): the follower takes full-rate colour images, which could starve other subscribers under Zenoh.

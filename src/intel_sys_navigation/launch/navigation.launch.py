@@ -62,7 +62,6 @@ def make_nav2(context):
             'use_sim_time': LaunchConfiguration('use_sim_time'),
             'autostart': LaunchConfiguration('autostart'),
             'params_file': params_file,
-            'map': LaunchConfiguration('map'),
         }.items()
     )]
 
@@ -75,7 +74,6 @@ def generate_launch_description():
         DeclareLaunchArgument('use_sim_time', default_value='false', description='Use simulation clock'),
         DeclareLaunchArgument('autostart', default_value='true', description='Automatically startup Nav2 stack'),
         DeclareLaunchArgument('params_file', default_value=default_nav2_params, description='Nav2 params YAML'),
-        DeclareLaunchArgument('map', default_value='', description='Full path to map yaml file to load (optional)'),
         DeclareLaunchArgument('slam', default_value='false',
                               description='Plan on RTAB-Map /map in the map frame (needs slam.launch.py running)'),
         OpaqueFunction(function=make_nav2),

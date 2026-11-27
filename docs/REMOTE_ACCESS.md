@@ -5,7 +5,8 @@ build, run tests, and drive it (including from Claude Code) without sitting at t
 
 ## How it works
 
-- **Network:** the Jetson is on our Tailscale tailnet at `100.91.100.16`. Your laptop must
+- **Network:** the Jetson is on our Tailscale tailnet as `autonomy-desktop` (its address:
+  `tailscale ip -4 autonomy-desktop`, or the Tailscale admin page). Your laptop must
   be signed in to the same tailnet (or have the Jetson shared with it). This works from
   any network, not just the lab Wi-Fi.
 - **Login:** key-based SSH as the `autonomy` user. Each person has their own key; the
@@ -21,7 +22,7 @@ Install Tailscale on your laptop and ask an admin to invite you to the tailnet (
 the Jetson with you). Check with:
 
 ```bash
-ping 100.91.100.16
+tailscale ping autonomy-desktop
 ```
 
 ### 2. Create a key (on your laptop)
@@ -39,7 +40,7 @@ Anyone with this file can log in to the Jetson, so keep it on your own machine o
 cat >> ~/.ssh/config <<'EOF'
 
 Host jetson
-  HostName 100.91.100.16
+  HostName autonomy-desktop      # Tailscale MagicDNS; or its 100.x address
   User autonomy
   IdentityFile ~/.ssh/jetson_key
 EOF
@@ -56,7 +57,7 @@ ssh jetson "echo '<your public key line>' >> ~/.ssh/authorized_keys"
 Or, if you know the `autonomy` password, do it yourself from a regular terminal:
 
 ```bash
-ssh-copy-id -i ~/.ssh/jetson_key.pub autonomy@100.91.100.16
+ssh-copy-id -i ~/.ssh/jetson_key.pub autonomy@autonomy-desktop
 ```
 
 ### 5. Test it
@@ -72,8 +73,8 @@ password-free and scripted access.
 
 ```bash
 ssh jetson                                   # interactive shell
-ssh jetson 'cd ~/intel_sys_workspaces && ./run_docker.sh'   # one-off command
-scp results/foo.json jetson:~/intel_sys_workspaces/results/  # copy files
+ssh jetson 'cd ~/intel_sys_workspaces && scripts/robot.sh ps'   # one-off command
+scp results/foo.json jetson:~/intel_sys_workspaces/results/      # copy files
 ```
 
 VS Code's Remote-SSH extension also picks up the `jetson` host.

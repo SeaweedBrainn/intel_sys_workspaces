@@ -9,17 +9,22 @@
 #   scripts/robot.sh ros2 topic hz /odom   # ros2 CLI on the robot's middleware
 #   scripts/robot.sh <compose args>    # anything else, e.g. ps, logs -f lidar, stop navigation, down
 #
-# Start the dashboard with scripts/dashboard.sh (it supplies the tokens), after the drivers.
+# The image comes from ROBOT_IMAGE (default intel-sys-rover:latest), usually set in an
+# untracked .env in the repo root, e.g. ROBOT_IMAGE=intel-sys-rover:slam. The Zenoh
+# router runs the same image unless ZENOH_IMAGE says otherwise.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 export COMPOSE_FILE=docker-compose.yml:docker-compose.zenoh.yml:docker-compose.robot.yml
+if [[ -f .env ]]; then set -a; . ./.env; set +a; fi
+export ROBOT_IMAGE="${ROBOT_IMAGE:-intel-sys-rover:latest}"
+export ZENOH_IMAGE="${ZENOH_IMAGE:-$ROBOT_IMAGE}"
 
 # With the camera on, RTAB-Map waits for camera frames and stops updating without
 # them, so refuse to start localization unless the camera is publishing.
 require_camera() {
   [[ "${SLAM_CAMERA:-true}" == false ]] && return 0
-  docker inspect -f '{{.State.Running}}' localization 2>/dev/null | grep -q true && return 0
-  if ! docker inspect -f '{{.State.Running}}' camerastack 2>/dev/null | grep -q true \
+  running localization && return 0
+  if ! running camerastack \
      || ! docker exec camerastack /ros_entrypoint_intel_sys.sh \
           timeout 15 ros2 topic echo --once --no-daemon /camera/camera_info >/dev/null 2>&1; then
     echo "The camera is not publishing /camera/camera_info. Start it with 'scripts/robot.sh up'" >&2
@@ -28,27 +33,35 @@ require_camera() {
   fi
 }
 
+running() { docker inspect -f '{{.State.Running}}' "$1" 2>/dev/null | grep -q true; }
+
+# A fresh mapping session (the default) makes RTAB-Map delete its database, so move the
+# previous map aside first. Not when re-localizing or continuing on it, and not when
+# localization is already running (it isn't restarted).
+keep_previous_map() {
+  DATA="${ROBOT_DATA_DIR:-data}"; mkdir -p "$DATA"
+  [[ "${SLAM_LOCALIZATION:-false}" == true || "${SLAM_CONTINUE:-false}" == true ]] && return 0
+  if [[ -f "$DATA/rtabmap.db" ]] && ! running localization; then
+    mv "$DATA/rtabmap.db" "$DATA/rtabmap_$(date +%Y%m%d_%H%M%S).db"
+    echo "previous map kept as $(ls -t "$DATA"/rtabmap_*.db | head -1)"
+  fi
+}
+
 if [[ "${1:-}" == "up" ]]; then
+  echo "image: $ROBOT_IMAGE"
   case "${2:-}" in
     "")                       exec docker compose up -d zenohd stm32 lidar camera description health ;;
     localization)             require_camera localization
-                              DATA="${ROBOT_DATA_DIR:-data}"; mkdir -p "$DATA"
-                              # Mapping starts a new database; keep the previous map instead of
-                              # letting RTAB-Map delete it (only when localization is not running).
-                              if [[ "${SLAM_LOCALIZATION:-false}" != true && -f "$DATA/rtabmap.db" ]] \
-                                 && ! docker inspect -f '{{.State.Running}}' localization 2>/dev/null | grep -q true; then
-                                mv "$DATA/rtabmap.db" "$DATA/rtabmap_$(date +%Y%m%d_%H%M%S).db"
-                                echo "previous map kept as $(ls -t "$DATA"/rtabmap_*.db | head -1)"
-                              fi
+                              keep_previous_map
                               exec docker compose --profile localization up -d localization ;;
-    # --no-recreate: never restart a running localization (that would reset odometry,
-    # and in mapping mode wipe the map); start it only if it is not running yet.
+    # Starts localization too if it isn't running. --no-recreate: never restart a running
+    # localization (that would reset odometry, and in mapping mode wipe the map).
     navigation)               require_camera navigation
-                              mkdir -p "${ROBOT_DATA_DIR:-data}"
+                              keep_previous_map
                               exec docker compose --profile navigation up -d --no-recreate navigation explorer ;;
     # Following runs without RTAB-Map (SLAM=false), so a running mapping session must stop first.
     follow)                   require_camera follow
-                              if docker inspect -f '{{.State.Running}}' localization 2>/dev/null | grep -q true \
+                              if running localization \
                                  && docker inspect -f '{{join .Config.Cmd " "}}' localization | grep -q 'slam:=true'; then
                                 echo "Localization is running with RTAB-Map. Stop it first: scripts/robot.sh stop navigation localization" >&2
                                 exit 1

@@ -1,10 +1,12 @@
 #!/usr/bin/env bash
 # Host-side preflight. Runs on the Jetson, NOT in the container.
 # Prints PASS / FAIL / SKIP per check. Exits nonzero only if a check FAILs.
-# SKIP means the device is offline (expected for the LiDAR right now), not broken.
+# SKIP means the device is offline, not broken.
 set -uo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# The image scripts/robot.sh runs: ROBOT_IMAGE from the repo's .env, else :latest.
+[[ -z "${IMAGE:-}" && -f "$(dirname "${BASH_SOURCE[0]}")/../.env" ]] && IMAGE="$(sed -n 's/^ROBOT_IMAGE=//p' "$(dirname "${BASH_SOURCE[0]}")/../.env" | tail -1)"
 IMAGE="${IMAGE:-intel-sys-rover:latest}"
 LIDAR_IP="${LIDAR_IP:-192.168.1.2}"
 MIN_FREE_GB="${MIN_FREE_GB:-10}"
@@ -46,7 +48,7 @@ fi
 if ping -c1 -W1 "$LIDAR_IP" >/dev/null 2>&1; then
   pass "LiDAR $LIDAR_IP reachable"
 else
-  skip "LiDAR $LIDAR_IP unreachable (expected while LiDAR is offline)"
+  skip "LiDAR $LIDAR_IP unreachable (powered off or not on the wired network)"
 fi
 
 # 5. RealSense on USB (Intel vendor id 8086)

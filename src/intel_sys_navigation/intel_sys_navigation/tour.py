@@ -3,10 +3,11 @@
 For every frontier chunk (frontiers.frontier_chunks) a viewpoint is sampled
 nearby: the reachable spot from which the sensors, which only see the front
 180 degrees, see the most of the chunk's frontier cells, and the heading to see
-them from. Then the order of visiting all viewpoints is planned as an open
-travelling-salesman path from the robot, with costs in seconds (turn, drive the
-path, turn). The robot drives to the first stop; the tour is re-planned as the
-map grows, and the goal only changes when another tour is clearly cheaper.
+them from. Chunks another viewpoint already sees about as well get no stop of
+their own (merge). Then the order of visiting the remaining viewpoints is planned
+as an open travelling-salesman path from the robot, with costs in seconds (turn,
+drive the path, turn). The robot drives to the first stop; the tour is re-planned
+as the map grows, and the goal only changes when another tour is clearly cheaper.
 
 Where the robot can drive comes from one place, Nav2's global costmap: known
 cells cheaper than "inscribed" (the robot's radius from an obstacle). So a
@@ -36,19 +37,15 @@ class Candidate:
     new_area: float = 0.0   # m^2 of unknown space in view from there, facing heading
 
 
-def coverage(grid, xy, cells, fov=math.pi, max_range=5.0):
-    """(count, heading): how many of cells a sensor at xy sees within one fov-wide view.
-
-    A cell is visible when it is within max_range and the straight line to it
-    crosses no occupied map cell. The fov window holding the most visible cells
-    gives the count, and their middle direction the heading.
-    """
+def _visible(grid, xy, cells, max_range):
+    """Bearings from xy of the cells within max_range whose straight line from xy
+    crosses no occupied map cell."""
     cells = np.asarray(cells, dtype=float)
     d = cells - np.asarray(xy, dtype=float)
     dist = np.hypot(d[:, 0], d[:, 1])
     m = (dist <= max_range) & (dist > 1e-6)
     if not m.any():
-        return 0, 0.0
+        return np.zeros(0)
     d, dist = d[m], dist[m]
     k = max(2, int(math.ceil(dist.max() / (grid.res / 2))) + 1)
     t = np.linspace(0.0, 1.0, k)
@@ -60,9 +57,25 @@ def coverage(grid, xy, cells, fov=math.pi, max_range=5.0):
     occ = np.zeros(rows.shape, dtype=bool)
     occ[inside] = grid.data[rows[inside], cols[inside]] > FREE_MAX
     seen = ~occ.any(axis=1)
-    if not seen.any():
+    return np.arctan2(d[seen, 1], d[seen, 0])
+
+
+def seen_from(grid, xy, heading, cells, fov=math.pi, max_range=5.0):
+    """How many of cells a sensor at xy facing heading sees (visible and inside its fov)."""
+    a = _visible(grid, xy, cells, max_range)
+    return int((np.abs(_wrap(a - heading)) <= fov / 2 + 1e-9).sum())
+
+
+def coverage(grid, xy, cells, fov=math.pi, max_range=5.0):
+    """(count, heading): how many of cells a sensor at xy sees within one fov-wide view.
+
+    A cell is visible when it is within max_range and the straight line to it
+    crosses no occupied map cell. The fov window holding the most visible cells
+    gives the count, and their middle direction the heading.
+    """
+    a = np.sort(_visible(grid, xy, cells, max_range))
+    if a.size == 0:
         return 0, 0.0
-    a = np.sort(np.arctan2(d[seen, 1], d[seen, 0]))
     ring = np.concatenate([a, a + 2 * math.pi])
     end = np.searchsorted(ring, a + fov, side='left')       # first angle past each window
     counts = end - np.arange(len(a))
@@ -132,6 +145,47 @@ def best_viewpoint(chunk, grid, graph, robot_dist, fov=math.pi, max_range=5.0, s
     c = best[1]
     c.new_area = unknown_area(grid, c.xy, c.heading, fov, max_range)
     return c
+
+
+def merge(cands, grid, fov=math.pi, max_range=5.0, fraction=0.8, first=None):
+    """One stop for chunks a single viewpoint already sees: (kept indices, covered indices each).
+
+    Chunks are small so that each gets a viewpoint that really sees it, but in an open
+    room one stop sees several neighbouring chunks, and a stop each costs a turn and a
+    detour each. Viewpoint i covers candidate j when i, facing its own heading, sees at
+    least `fraction` of the cells j's own viewpoint sees (and always covers its own
+    chunk). Greedy set cover: the viewpoints covering the most frontier cells are kept
+    first; first (the current goal) is kept before all, so its hysteresis still applies.
+    A candidate covered by a kept one gets no stop of its own.
+
+    The view is predicted on the current map, unknown space taken as see-through. If
+    something hidden in it blocks the view after all, the covered chunk's frontier is
+    still there at the next replan and it gets its own stop again: a short revisit,
+    never a missed area.
+    """
+    k = len(cands)
+    covers = []
+    for i, c in enumerate(cands):
+        cov = []
+        for j, o in enumerate(cands):
+            if o.chunk is c.chunk:
+                cov.append(j)
+            elif o.gain > 0 and seen_from(grid, c.xy, c.heading, o.chunk.cells, fov, max_range) >= fraction * o.gain:
+                cov.append(j)
+        covers.append(cov)
+    score = [sum(len(cands[j].chunk.cells) for j in cov) for cov in covers]
+    order = sorted(range(k), key=lambda i: -score[i])
+    if first is not None:
+        order.remove(first)
+        order.insert(0, first)
+    covered, stops = set(), {}
+    for i in order:
+        if i in covered:
+            continue
+        stops[i] = [j for j in covers[i] if j not in covered]   # each candidate goes to one stop
+        covered.update(covers[i])
+    keep = sorted(stops)
+    return keep, [stops[i] for i in keep]
 
 
 class PathGraph:

@@ -10,13 +10,17 @@ Once the map changes (RTAB-Map's /map, about once a second):
      unknown space; that is also what ends exploration.
      Reachable means on Nav2's global costmap, through known cells cheaper than
      "inscribed", so every goal sent is one Nav2 can plan to.
+     The current goal stays in the plan as it is (same spot and heading), and chunks
+     one viewpoint already sees (cover_fraction of what their own viewpoint would)
+     get no stop of their own.
   3. goal_strategy:=tour (default): the order of visiting all viewpoints, planned
      over path lengths and turns in seconds; the robot drives to the first stop, and
      only switches when another tour is more than switch_hysteresis cheaper.
      goal_strategy:=greedy: the viewpoint with the most unknown area per second.
   (intel_sys_navigation.tour for 2 and 3.)
 
-A goal ends when its frontier has been mapped (the next one preempts it in Nav2), when
+A goal ends when the frontier it was sent for (its chunk and the chunks it covers)
+has been mapped or no longer holds min_new_area (the next goal preempts it in Nav2), when
 it is reached, fails, or takes three times its expected travel time; the last three
 are blacklisted. With no frontier left it drives back to where it started (which also
 lets RTAB-Map close the loop). Every goal sent is tracked until Nav2 reports its end,
@@ -53,7 +57,8 @@ from std_srvs.srv import Trigger
 from tf2_ros import Buffer, TransformListener
 
 from intel_sys_navigation.frontiers import Grid, frontier_chunks, still_frontier
-from intel_sys_navigation.tour import PathGraph, best_viewpoint, leg_costs, pick
+from intel_sys_navigation.tour import (Candidate, PathGraph, best_viewpoint, leg_costs, merge, pick,
+                                       seen_from, unknown_area)
 
 SAME_GOAL = 0.3   # m: goals closer than this are the same goal
 
@@ -82,6 +87,9 @@ class FrontierExplorer(Node):
         # without it the robot spent 6 minutes on slivers); tune it on the robot.
         self.min_new_area = p('min_new_area', 2.0).value             # m^2
         self.hysteresis = p('switch_hysteresis', 0.15).value
+        # A viewpoint covers another chunk when it sees this fraction of what that chunk's
+        # own viewpoint would; covered chunks get no stop of their own.
+        self.cover_fraction = p('cover_fraction', 0.8).value
         self.blacklist_radius = p('blacklist_radius', 0.5).value
         # Goals only on global-costmap cells this cheap (0-98 scale): with our inflation
         # (0.55 m, fall-off 5) 30 is about 0.45 m from obstacles, room to stop and turn.
@@ -123,7 +131,9 @@ class FrontierExplorer(Node):
     def reset(self):
         """Fresh session: new home, empty blacklist and stats."""
         self.home = None
-        self.goal = self.target = self.goal_handle = None
+        self.goal = self.goal_handle = None
+        self.goal_yaw = 0.0
+        self.targets = []     # one frontier cell per chunk the current goal was sent to see
         self.deadline = None
         self.blacklist = []
         self.empty = 0
@@ -201,7 +211,7 @@ class FrontierExplorer(Node):
         g.pose.pose.orientation.z, g.pose.pose.orientation.w = math.sin(yaw / 2), math.cos(yaw / 2)
         self.seq += 1
         seq = self.seq
-        self.goal, self.goal_handle = xy, None
+        self.goal, self.goal_yaw, self.goal_handle = xy, yaw, None
         self.deadline = time.monotonic() + timeout
         self.nav.send_goal_async(g).add_done_callback(lambda f: self.on_accepted(f, seq))
 
@@ -245,8 +255,30 @@ class FrontierExplorer(Node):
 
     # ---- the loop ----
 
+    def current_goal(self, m, chunks):
+        """The goal being driven to, as a candidate at its own spot and heading, or None
+        once what it was sent to see is mapped or no longer worth min_new_area.
+
+        Kept as it is rather than matched to this update's chunks: chunks are recomputed
+        and split differently as the map grows, and matching by chunk lost the current
+        goal, skipped the hysteresis and flipped between goals (office.sdf, 2026-11-26).
+        """
+        if self.goal is None:
+            return None
+        left = [t for t in self.targets if still_frontier(chunks, t)]
+        if not left:
+            return None
+        own = min(chunks, key=lambda ch: min(np.min(np.hypot(*(ch.cells - np.asarray(t)).T)) for t in left))
+        area = unknown_area(m, self.goal, self.goal_yaw, self.fov, self.view_range)
+        if area < self.min_new_area:
+            return None
+        seen = seen_from(m, self.goal, self.goal_yaw, own.cells, self.fov, self.view_range)
+        return Candidate(own, self.goal, seen, self.goal_yaw, area)
+
     def plan(self, xy, yaw):
-        """Candidates (viewpoints) and the (k+1, k+1) cost matrix, robot first."""
+        """(chunks, candidates, cost, current, covered): viewpoints to visit, the (k+1, k+1)
+        cost matrix with the robot first, the current goal's index in it (1-based) or None,
+        and for each candidate the chunks it covers."""
         m, cm = grid(self.map), grid(self.costmap)
         chunks = frontier_chunks(m, self.min_size, self.chunk_radius)
         graph = PathGraph(cm)
@@ -255,12 +287,19 @@ class FrontierExplorer(Node):
         cands = [c for c in (best_viewpoint(ch, m, graph, from_robot, self.fov, self.view_range, skip,
                                             self.goal_max_cost)
                              for ch in chunks) if c is not None and c.new_area >= self.min_new_area]
+        cur = self.current_goal(m, chunks)
+        if cur is not None:
+            cands.insert(0, cur)
         if not cands:
-            return chunks, [], None
+            return chunks, [], None, None, []
+        keep, covers = merge(cands, m, self.fov, self.view_range, self.cover_fraction,
+                             first=0 if cur is not None else None)
+        covered = [[cands[j].chunk for j in cov] for cov in covers]
+        cands = [cands[i] for i in keep]
         dist, depart, arrive = graph.legs([xy] + [c.xy for c in cands])
         cost = leg_costs(dist, depart, arrive, [yaw] + [c.heading for c in cands],
                          self.limits['speed'], self.limits['turn_rate'])
-        return chunks, cands, cost
+        return chunks, cands, cost, (1 if cur is not None else None), covered
 
     def step(self):
         self.read_limits()
@@ -288,14 +327,12 @@ class FrontierExplorer(Node):
         self.map_changed = False
 
         t0 = time.monotonic()
-        chunks, cands, cost = self.plan(xy, yaw)
-        if self.goal is not None and not still_frontier(chunks, self.target):
+        chunks, cands, cost, current, covered = self.plan(xy, yaw)
+        if self.goal is not None and current is None:
             self.stats['replaced'] += 1
             self.get_logger().info('frontier mapped before arrival; picking the next one')
             self.goal = None    # its handle stays tracked until the next goal preempts it
         if not cands:
-            if self.goal is not None:
-                return  # its frontier is still there; keep driving to it
             self.cancel_all()   # nothing to drive to: stop whatever Nav2 is still doing
             self.empty += 1
             if self.empty >= self.done_after:
@@ -308,27 +345,28 @@ class FrontierExplorer(Node):
             return
         self.empty = 0
 
-        current = None
-        if self.goal is not None:
-            current = next((i + 1 for i, c in enumerate(cands) if still_frontier([c.chunk], self.target)), None)
         if self.strategy == 'tour':
             nxt, order, switched = pick(cost, current, self.hysteresis)
         else:   # greedy: most unknown area per second of travel
             nxt = 1 + int(np.argmax([c.new_area / max(cost[0, i + 1], 1e-3) for i, c in enumerate(cands)]))
             order, switched = [nxt], current is not None and nxt != current
         c = cands[nxt - 1]
+        # What this goal is for: a frontier cell in each chunk it covers. Updated when the
+        # goal is kept too, so it lasts while anything it now covers is unmapped.
+        self.targets = [tuple(ch.cells[np.argmin(np.hypot(*(ch.cells - ch.centroid).T))])
+                        for ch in covered[nxt - 1]]
         if self.goal is not None and (nxt == current or math.dist(c.xy, self.goal) < SAME_GOAL):
             return  # keep the current goal; resending it would restart Nav2 for nothing
         if switched:
             self.stats['switched'] += 1
-        self.target = tuple(c.chunk.cells[np.argmin(np.hypot(*(c.chunk.cells - c.chunk.centroid).T))])
         self.stats['goals'] += 1
         travel = float(cost[0, nxt])
         self.send(c.xy, c.heading, max(self.min_timeout, self.timeout_factor * travel))
         total = sum(cost[a, b] for a, b in zip([0] + order, order))
         self.get_logger().info(
             f'goal {self.stats["goals"]}: {c.xy[0]:.2f}, {c.xy[1]:.2f}, heading {math.degrees(c.heading):.0f} deg, '
-            f'sees {c.gain} frontier cells and {c.new_area:.1f} m2 unknown, {travel:.0f} s away; {len(cands)} frontiers, tour {total:.0f} s'
+            f'sees {c.gain} frontier cells and {c.new_area:.1f} m2 unknown, {travel:.0f} s away; '
+            f'covers {len(covered[nxt - 1])} of {len(chunks)} chunks; {len(cands)} stops, tour {total:.0f} s'
             f'{" (switched)" if switched else ""}; planned in {1000 * (time.monotonic() - t0):.0f} ms')
 
 

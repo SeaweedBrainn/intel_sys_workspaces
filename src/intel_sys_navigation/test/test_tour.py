@@ -4,8 +4,8 @@ import math
 import numpy as np
 
 from intel_sys_navigation.frontiers import Chunk, Grid, frontier_chunks
-from intel_sys_navigation.tour import (INSCRIBED, PathGraph, best_viewpoint, coverage, leg_costs, pick,
-                                       samples, solve, unknown_area)
+from intel_sys_navigation.tour import (INSCRIBED, Candidate, PathGraph, best_viewpoint, coverage, leg_costs,
+                                       merge, pick, samples, seen_from, solve, unknown_area)
 
 RES = 0.1
 
@@ -126,6 +126,59 @@ def test_best_viewpoint_respects_skip_and_reachability():
     everywhere = [(tuple(p), 0.1) for p in samples(chunk.centroid)]
     assert best_viewpoint(chunk, m, pg, pg.distances_from((0.5, 2.0)), skip=everywhere) is None
     assert best_viewpoint(chunk, m, pg, np.full(len(pg.rc), np.inf)) is None
+
+
+def test_seen_from_only_counts_cells_inside_the_view():
+    g = half_known()
+    chunk = frontier_chunks(g, min_size=3, max_radius=10)[0]
+    assert seen_from(g, (1.0, 2.0), 0.0, chunk.cells) == len(chunk.cells)    # facing it
+    assert seen_from(g, (1.0, 2.0), math.pi, chunk.cells) == 0                # facing away
+    g.data[:, 15] = 100
+    assert seen_from(g, (1.0, 2.0), 0.0, chunk.cells) == 0                    # behind a wall
+
+
+def viewpoints(m, max_radius):
+    pg = PathGraph(costmap_from(m))
+    start = pg.distances_from((0.5, 2.0))
+    chunks = frontier_chunks(m, min_size=3, max_radius=max_radius)
+    return [c for c in (best_viewpoint(ch, m, pg, start) for ch in chunks) if c is not None]
+
+
+def test_one_stop_for_chunks_one_view_covers():
+    m = half_known()                           # a 4 m straight edge, split into ~0.5 m chunks
+    cands = viewpoints(m, max_radius=0.5)
+    assert len(cands) >= 4
+    keep, covers = merge(cands, m)
+    assert len(keep) < len(cands)
+    assigned = sorted(j for cov in covers for j in cov)
+    assert assigned == list(range(len(cands)))  # every chunk belongs to exactly one stop
+    for i, cov in zip(keep, covers):
+        assert i in cov
+
+
+def test_no_merge_across_a_wall():
+    g = np.full((40, 60), -1, dtype=np.int8)
+    g[:, :20] = 0                              # left room, unknown beyond x = 2 m
+    g[:, 40:] = 0                              # right room, unknown before x = 4 m
+    g[:, 30] = 100                             # and a wall in the unknown between them
+    m = Grid(g, RES, (0.0, 0.0))
+    chunks = frontier_chunks(m, min_size=3, max_radius=10)
+    assert len(chunks) == 2
+    a = Candidate(chunks[0], (1.0, 2.0), seen_from(m, (1.0, 2.0), 0.0, chunks[0].cells), 0.0)
+    b = Candidate(chunks[1], (5.0, 2.0), seen_from(m, (5.0, 2.0), math.pi, chunks[1].cells), math.pi)
+    assert a.gain > 0 and b.gain > 0
+    keep, _ = merge([a, b], m)
+    assert keep == [0, 1]
+
+
+def test_current_goal_is_kept_first_and_takes_its_own_chunk():
+    m = half_known()
+    cands = viewpoints(m, max_radius=0.5)
+    weak = cands[0]
+    cur = Candidate(weak.chunk, weak.xy, weak.gain, weak.heading)   # the goal being driven to
+    keep, covers = merge([cur] + cands, m, first=0)
+    assert keep[0] == 0
+    assert 1 in covers[0]                      # its chunk's fresh viewpoint gets no stop of its own
 
 
 def test_turning_costs_time():

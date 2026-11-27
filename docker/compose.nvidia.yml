@@ -1,3 +1,5 @@
+# GPU access for the dev containers on machines with an NVIDIA card. run_docker.sh adds
+# this overlay to docker-compose.yml when it finds one (--nvidia / --cpu to force).
 x-nvidia-gpu: &nvidia-gpu
   environment:
     - NVIDIA_VISIBLE_DEVICES=all

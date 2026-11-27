@@ -1,5 +1,5 @@
-# The robot's stacks as compose services, one launch file each, on the Jetson.
-# Use with the base file and the Zenoh overlay; scripts/robot.sh sets this up:
+# The robot's stacks as compose services, one launch file each, on the Jetson, plus the
+# Zenoh router they all talk through. Use it through scripts/robot.sh:
 #
 #   scripts/robot.sh up                    # drivers, robot description and health
 #   scripts/robot.sh up localization       # + Point-LIO and RTAB-Map (mapping)
@@ -33,6 +33,19 @@ x-robot: &robot
   stop_grace_period: 10s
 
 services:
+  # Zenoh router: every stack's rmw_zenoh session connects to it (docker/zenoh/).
+  zenohd:
+    image: intel-sys-rover:latest
+    container_name: intel-sys-zenohd
+    network_mode: host
+    ipc: host
+    command: ["bash", "-lc", "source /opt/ros/humble/setup.bash && ros2 run rmw_zenoh_cpp rmw_zenohd"]
+    volumes:
+      - ./:/workspaces/intel_sys:ro
+    env_file:
+      - docker/zenoh.env
+    restart: unless-stopped
+
   stm32:
     <<: *robot
     container_name: stm32stack

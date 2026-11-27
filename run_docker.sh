@@ -10,6 +10,9 @@ set -e
 #   ./run_docker.sh --rover      # Force rover hardware container (intel-sys-rover)
 #   ./run_docker.sh --build      # Rebuild image and restart shared container
 #   ./run_docker.sh --down       # Stop and remove running containers
+#   ./run_docker.sh --nvidia | --cpu   # Force the GPU overlay on or off (default: auto)
+#
+# The robot's own stacks are not these containers: see scripts/robot.sh.
 #   ./run_docker.sh <cmd>        # Run a command inside the container (e.g. ./run_docker.sh colcon test)
 
 SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
@@ -21,7 +24,6 @@ REBUILD=false
 STOP_CONTAINER=false
 PASSTHROUGH_ARGS=()
 ENABLE_NVIDIA=auto
-ENABLE_ZENOH=false
 TARGET_MODE=""
 
 # 1. Parse arguments
@@ -45,9 +47,6 @@ for arg in "$@"; do
         --cpu)
             ENABLE_NVIDIA=false
             ;;
-        --zenoh)
-            ENABLE_ZENOH=true
-            ;;
         *)
             PASSTHROUGH_ARGS+=("$arg")
             ;;
@@ -67,7 +66,7 @@ fi
 if [ "$TARGET_MODE" = "rover" ]; then
     SERVICE="intel-sys-rover"
     export DOCKER_RUNTIME=${DOCKER_RUNTIME:-nvidia}
-    export COMPOSE_FILE="docker-compose.yml:docker-compose.nvidia.yml"
+    export COMPOSE_FILE="docker-compose.yml:docker/compose.nvidia.yml"
     PLATFORM_NAME="Rover Hardware [Jetson ARM64]"
 else
     SERVICE="intel-sys-sim"
@@ -84,29 +83,18 @@ else
     fi
 
     if [ "$HAS_NVIDIA" = "true" ]; then
-        export COMPOSE_FILE="docker-compose.yml:docker-compose.nvidia.yml"
+        export COMPOSE_FILE="docker-compose.yml:docker/compose.nvidia.yml"
         PLATFORM_NAME="Simulation [x86_64 with NVIDIA GPU acceleration]"
     else
         export COMPOSE_FILE="docker-compose.yml"
         PLATFORM_NAME="Simulation [x86_64 standard CPU]"
     fi
 
-    # WSL2: GPU OpenGL goes through Mesa's d3d12 driver (see docker-compose.wsl.yml).
+    # WSL2: GPU OpenGL goes through Mesa's d3d12 driver (see docker/compose.wsl.yml).
     if [ -e /dev/dxg ] && grep -qi microsoft /proc/version 2>/dev/null; then
-        export COMPOSE_FILE="${COMPOSE_FILE}:docker-compose.wsl.yml"
+        export COMPOSE_FILE="${COMPOSE_FILE}:docker/compose.wsl.yml"
         PLATFORM_NAME="${PLATFORM_NAME} + WSL d3d12 OpenGL"
     fi
-fi
-
-# 2b. Zenoh RMW overlay (zenohd router + docker/zenoh.env). Router uses the same image as the target.
-if [ "$ENABLE_ZENOH" = true ]; then
-    export COMPOSE_FILE="${COMPOSE_FILE}:docker-compose.zenoh.yml"
-    if [ "$TARGET_MODE" = "rover" ]; then
-        export ZENOH_IMAGE="intel-sys-rover:latest"
-    else
-        export ZENOH_IMAGE="intel-sys-sim:latest"
-    fi
-    PLATFORM_NAME="${PLATFORM_NAME} + Zenoh RMW"
 fi
 
 # 3. Stop containers if requested

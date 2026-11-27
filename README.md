@@ -24,7 +24,8 @@ ROS 2 Humble workspace for an autonomous mecanum rover: a Jetson Orin NX with an
 | `scripts/` | `robot.sh` (the robot's stacks), tests, bag recording; `scripts/eval/` evaluates localization |
 | `third_party/robot.repos` | Pinned Point-LIO, Unitree SDK and RealSense sources, built into the images |
 | `Dockerfile.rover`, `Dockerfile.sim` | Jetson (arm64) and laptop (amd64, with Gazebo) images |
-| `docker-compose*.yml` | Dev containers, GPU, WSL and Zenoh overlays, and the robot's stacks (`docker-compose.robot.yml`) |
+| `docker-compose.yml` | Dev containers: the sim on a laptop, a shell on the Jetson (`run_docker.sh`; GPU and WSL overlays in `docker/`) |
+| `docker-compose.robot.yml` | The robot's stacks and the Zenoh router (`scripts/robot.sh`) |
 
 ## Quick start
 

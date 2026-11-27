@@ -10,7 +10,7 @@
 #   scripts/robot.sh <compose args>    # anything else, e.g. ps, logs -f lidar, stop navigation, down
 set -euo pipefail
 cd "$(dirname "$0")/.."
-export COMPOSE_FILE=docker-compose.yml:docker-compose.zenoh.yml:docker-compose.robot.yml
+export COMPOSE_FILE=docker-compose.robot.yml
 
 # With the camera on, RTAB-Map waits for camera frames and stops updating without
 # them, so refuse to start localization unless the camera is publishing.
